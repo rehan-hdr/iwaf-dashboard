@@ -1,33 +1,71 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# Dashboard Project
 
-## Getting Started
+A Next.js dashboard application with MongoDB integration.
 
-First, run the development server:
+## 🚀 Setup Instructions
 
+### 1. Install dependencies
+```bash
+npm install
+```
+
+### 2. Configure MongoDB URI
+**📍 IMPORTANT: Put your MongoDB connection string in `.env.local`**
+
+The `.env.local` file is located in the root directory. Edit it and add your connection string:
+
+For MongoDB Atlas:
+```
+MONGODB_URI=mongodb+srv://your-username:your-password@your-cluster.mongodb.net/your-database?retryWrites=true&w=majority
+```
+
+For local MongoDB:
+```
+MONGODB_URI=mongodb://localhost:27017/your-database-name
+```
+
+### 3. Update Database Configuration
+Edit `app/api/data/route.js`:
+- **Line 6**: Replace `'your-database-name'` with your actual database name
+- **Line 10**: Replace `'your-collection-name'` with your actual collection name
+
+### 4. Run Development Server
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+## 📁 Project Structure
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+dashboard/
+├── app/
+│   ├── api/
+│   │   └── data/
+│   │       └── route.js       # API endpoint for MongoDB data
+│   ├── page.js                # Main dashboard page (client component)
+│   ├── layout.js              # Root layout
+│   └── globals.css            # Global styles
+├── lib/
+│   └── mongodb.js             # MongoDB connection utility with pooling
+├── .env.local                 # Environment variables ⚠️ DO NOT COMMIT
+└── package.json
+```
 
-## Learn More
+## ✨ Features
 
-To learn more about Next.js, take a look at the following resources:
+- ✅ Simple dashboard with dummy stats and action buttons
+- ✅ MongoDB integration with connection pooling
+- ✅ API route to fetch data from MongoDB
+- ✅ Responsive design with Tailwind CSS
+- ✅ Clean, maintainable code structure
+- ✅ Error handling and loading states
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 📚 Learn More
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- [Next.js Documentation](https://nextjs.org/docs)
+- [MongoDB Node.js Driver](https://www.mongodb.com/docs/drivers/node/current/)
 
 ## Deploy on Vercel
 
