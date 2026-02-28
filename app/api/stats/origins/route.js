@@ -30,10 +30,10 @@ export async function GET() {
     async function getCountryFromIP(ip) {
       // Skip localhost/private IPs - show actual IP for local networks
       if (ip === '127.0.0.1') {
-        return { country: 'Localhost', countryCode: 'LH', ip: ip };
+        return { country: 'Localhost', countryCode: 'LH', flag: '🏠', ip: ip };
       }
       if (ip.startsWith('192.168.') || ip.startsWith('10.') || ip.startsWith('172.')) {
-        return { country: 'Private Network', countryCode: 'PN', ip: ip };
+        return { country: 'Private Network', countryCode: 'PN', flag: '🏢', ip: ip };
       }
 
       try {
@@ -48,13 +48,24 @@ export async function GET() {
           return {
             country: data.country_name || 'Unknown',
             countryCode: data.country_code || 'XX',
+            flag: getCountryFlag(data.country_code)
           };
         }
       } catch (error) {
         console.log(`GeoIP lookup failed for ${ip}:`, error.message);
       }
       
-      return { country: 'Unknown', countryCode: 'XX' };
+      return { country: 'Unknown', countryCode: 'XX', flag: '🌍' };
+    }
+
+    // Helper to convert country code to flag emoji
+    function getCountryFlag(countryCode) {
+      if (!countryCode || countryCode === 'XX') return '🌍';
+      const codePoints = countryCode
+        .toUpperCase()
+        .split('')
+        .map(char => 127397 + char.charCodeAt());
+      return String.fromCodePoint(...codePoints);
     }
 
     // Get top 3 IPs and lookup their countries
@@ -71,6 +82,7 @@ export async function GET() {
           ip: item._id,
           country: displayCountry,
           countryCode: geoData.countryCode,
+          flag: geoData.flag,
           requestsPerSec: (item.count / (7 * 24 * 60 * 60)).toFixed(3),
           totalRequests: item.count,
           trend: Math.floor(Math.random() * 20), // Placeholder trend
