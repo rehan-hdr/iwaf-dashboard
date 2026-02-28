@@ -41,15 +41,15 @@ export default function IpManagementPage() {
   const currentList = activeTab === 'blocklist' ? blocklist : whitelist;
 
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold text-gray-800 mb-2">IP Management</h1>
-      <p className="text-gray-500 mb-6">Manage blocked and whitelisted IP addresses</p>
+    <div className="p-4 sm:p-6">
+      <h1 className="text-xl sm:text-2xl font-bold text-gray-800 mb-2"><span className="text-amber-500">(HARDCODED)</span> IP Management</h1>
+      <p className="text-gray-500 text-sm mb-4 sm:mb-6">Manage blocked and whitelisted IP addresses</p>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg w-fit">
+      <div className="flex gap-1 mb-4 sm:mb-6 bg-gray-100 p-1 rounded-lg w-full sm:w-fit">
         <button
           onClick={() => setActiveTab('blocklist')}
-          className={`px-6 py-2 rounded-md text-sm font-medium transition-colors ${
+          className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 rounded-md text-sm font-medium transition-colors ${
             activeTab === 'blocklist'
               ? 'bg-white text-red-600 shadow-sm'
               : 'text-gray-600 hover:text-gray-800'
@@ -59,7 +59,7 @@ export default function IpManagementPage() {
         </button>
         <button
           onClick={() => setActiveTab('whitelist')}
-          className={`px-6 py-2 rounded-md text-sm font-medium transition-colors ${
+          className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 rounded-md text-sm font-medium transition-colors ${
             activeTab === 'whitelist'
               ? 'bg-white text-green-600 shadow-sm'
               : 'text-gray-600 hover:text-gray-800'
@@ -70,12 +70,12 @@ export default function IpManagementPage() {
       </div>
 
       {/* Add IP Form */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
-        <h2 className="text-lg font-semibold text-gray-800 mb-4">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6 mb-4 sm:mb-6">
+        <h2 className="text-base sm:text-lg font-semibold text-gray-800 mb-4">
           Add to {activeTab === 'blocklist' ? 'Blocklist' : 'Whitelist'}
         </h2>
-        <form onSubmit={handleAdd} className="flex flex-wrap gap-4 items-end">
-          <div className="flex-1 min-w-[200px]">
+        <form onSubmit={handleAdd} className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4 items-stretch sm:items-end">
+          <div className="flex-1 min-w-0 sm:min-w-[200px]">
             <label className="block text-sm font-medium text-gray-700 mb-1">IP Address</label>
             <input
               type="text"
@@ -84,22 +84,22 @@ export default function IpManagementPage() {
               placeholder="e.g. 192.168.1.100"
               required
               pattern="^(\d{1,3}\.){3}\d{1,3}$"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#FF7A50] focus:border-transparent outline-none"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#FF7A50] focus:border-transparent outline-none text-sm"
             />
           </div>
-          <div className="flex-1 min-w-[200px]">
+          <div className="flex-1 min-w-0 sm:min-w-[200px]">
             <label className="block text-sm font-medium text-gray-700 mb-1">Reason</label>
             <input
               type="text"
               value={newReason}
               onChange={(e) => setNewReason(e.target.value)}
               placeholder="Reason for adding"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#FF7A50] focus:border-transparent outline-none"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#FF7A50] focus:border-transparent outline-none text-sm"
             />
           </div>
           <button
             type="submit"
-            className={`px-6 py-2 text-white rounded-lg transition-colors ${
+            className={`w-full sm:w-auto px-6 py-2 text-white rounded-lg transition-colors text-sm ${
               activeTab === 'blocklist'
                 ? 'bg-red-500 hover:bg-red-600'
                 : 'bg-green-500 hover:bg-green-600'
@@ -110,35 +110,60 @@ export default function IpManagementPage() {
         </form>
       </div>
 
-      {/* IP Table */}
+      {/* IP Table — Mobile card view + Desktop table */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Mobile card view */}
+        <div className="block sm:hidden divide-y divide-gray-100">
+          {currentList.map((item) => (
+            <div key={item.ip} className="p-4">
+              <div className="flex items-center justify-between mb-1">
+                <span className="font-mono text-sm text-gray-800">{item.ip}</span>
+                <button
+                  onClick={() => handleRemove(item.ip)}
+                  className="text-xs text-red-600 hover:text-red-800"
+                >
+                  Remove
+                </button>
+              </div>
+              <div className="text-xs text-gray-600 mb-1">{item.reason}</div>
+              <div className="flex items-center justify-between text-xs text-gray-400">
+                <span>{new Date(item.addedAt).toLocaleDateString()}</span>
+                {activeTab === 'blocklist' && (
+                  <span className="text-red-600 font-medium">{item.hits} hits</span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Desktop table view */}
+        <div className="hidden sm:block overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="bg-gray-50 text-left">
-                <th className="px-6 py-3 text-xs font-medium text-gray-500 uppercase">IP Address</th>
-                <th className="px-6 py-3 text-xs font-medium text-gray-500 uppercase">Reason</th>
-                <th className="px-6 py-3 text-xs font-medium text-gray-500 uppercase">Added</th>
+                <th className="px-4 lg:px-6 py-3 text-xs font-medium text-gray-500 uppercase">IP Address</th>
+                <th className="px-4 lg:px-6 py-3 text-xs font-medium text-gray-500 uppercase">Reason</th>
+                <th className="px-4 lg:px-6 py-3 text-xs font-medium text-gray-500 uppercase">Added</th>
                 {activeTab === 'blocklist' && (
-                  <th className="px-6 py-3 text-xs font-medium text-gray-500 uppercase">Hits</th>
+                  <th className="px-4 lg:px-6 py-3 text-xs font-medium text-gray-500 uppercase">Hits</th>
                 )}
-                <th className="px-6 py-3 text-xs font-medium text-gray-500 uppercase">Actions</th>
+                <th className="px-4 lg:px-6 py-3 text-xs font-medium text-gray-500 uppercase">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {currentList.map((item) => (
                 <tr key={item.ip} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 font-mono text-sm text-gray-800">{item.ip}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{item.reason}</td>
-                  <td className="px-6 py-4 text-sm text-gray-500">
+                  <td className="px-4 lg:px-6 py-4 font-mono text-sm text-gray-800">{item.ip}</td>
+                  <td className="px-4 lg:px-6 py-4 text-sm text-gray-600">{item.reason}</td>
+                  <td className="px-4 lg:px-6 py-4 text-sm text-gray-500">
                     {new Date(item.addedAt).toLocaleDateString()}
                   </td>
                   {activeTab === 'blocklist' && (
-                    <td className="px-6 py-4">
+                    <td className="px-4 lg:px-6 py-4">
                       <span className="text-sm font-medium text-red-600">{item.hits}</span>
                     </td>
                   )}
-                  <td className="px-6 py-4">
+                  <td className="px-4 lg:px-6 py-4">
                     <button
                       onClick={() => handleRemove(item.ip)}
                       className="text-sm text-red-600 hover:text-red-800"

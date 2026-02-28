@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { DASHBOARD_SUMMARY } from '@/lib/mockData';
 
 const DashboardPage = () => {
   const [requestsData, setRequestsData] = useState(null);
@@ -9,7 +8,9 @@ const DashboardPage = () => {
   const [originsData, setOriginsData] = useState(null);
   const [classificationsData, setClassificationsData] = useState(null);
   const [additionalStats, setAdditionalStats] = useState(null);
+  const [summaryData, setSummaryData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [weekFilter, setWeekFilter] = useState('current'); // 'current' or 'previous'
 
@@ -17,28 +18,31 @@ const DashboardPage = () => {
     fetchAllData();
   }, []);
 
-  const fetchAllData = async (week = 'current') => {
+  // Full initial load — only on mount
+  const fetchAllData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const [requestsRes, usersRes, originsRes, classificationsRes, additionalRes] = await Promise.all([
-        fetch(`/api/stats/requests?week=${week}`),
-        fetch(`/api/stats/users?week=${week}`),
-        fetch(`/api/stats/origins?week=${week}`),
-        fetch(`/api/stats/classifications?week=${week}`),
-        fetch('/api/stats/additional')
+      const [requestsRes, usersRes, originsRes, classificationsRes, additionalRes, summaryRes] = await Promise.all([
+        fetch('/api/stats/requests?week=current'),
+        fetch('/api/stats/users?week=current'),
+        fetch('/api/stats/origins?week=current'),
+        fetch('/api/stats/classifications?week=current'),
+        fetch('/api/stats/additional'),
+        fetch('/api/stats/summary')
       ]);
 
-      if (!requestsRes.ok || !usersRes.ok || !originsRes.ok || !classificationsRes.ok || !additionalRes.ok) {
+      if (!requestsRes.ok || !usersRes.ok || !originsRes.ok || !classificationsRes.ok || !additionalRes.ok || !summaryRes.ok) {
         throw new Error('Failed to fetch data');
       }
 
-      const [requests, users, origins, classifications, additional] = await Promise.all([
+      const [requests, users, origins, classifications, additional, summary] = await Promise.all([
         requestsRes.json(),
         usersRes.json(),
         originsRes.json(),
         classificationsRes.json(),
-        additionalRes.json()
+        additionalRes.json(),
+        summaryRes.json()
       ]);
 
       setRequestsData(requests.data);
@@ -46,11 +50,46 @@ const DashboardPage = () => {
       setOriginsData(origins.data);
       setClassificationsData(classifications.data);
       setAdditionalStats(additional.data);
+      setSummaryData(summary.data);
     } catch (err) {
       setError(err.message);
       console.error('Error fetching dashboard data:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Lightweight refresh — only week-dependent APIs, no full page spinner
+  const switchWeek = async (week) => {
+    setWeekFilter(week);
+    setRefreshing(true);
+    try {
+      const [requestsRes, usersRes, originsRes, classificationsRes] = await Promise.all([
+        fetch(`/api/stats/requests?week=${week}`),
+        fetch(`/api/stats/users?week=${week}`),
+        fetch(`/api/stats/origins?week=${week}`),
+        fetch(`/api/stats/classifications?week=${week}`),
+      ]);
+
+      if (!requestsRes.ok || !usersRes.ok || !originsRes.ok || !classificationsRes.ok) {
+        throw new Error('Failed to fetch data');
+      }
+
+      const [requests, users, origins, classifications] = await Promise.all([
+        requestsRes.json(),
+        usersRes.json(),
+        originsRes.json(),
+        classificationsRes.json(),
+      ]);
+
+      setRequestsData(requests.data);
+      setUsersData(users.data);
+      setOriginsData(origins.data);
+      setClassificationsData(classifications.data);
+    } catch (err) {
+      console.error('Error switching week:', err);
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -89,36 +128,38 @@ const DashboardPage = () => {
       </div>
 
       {/* Security Summary Cards */}
+      <h2 className="text-lg font-semibold text-gray-800 mb-3">Security Summary</h2>
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
           <div className="text-xs font-medium text-gray-500 uppercase">Blocked Today</div>
-          <div className="text-2xl font-bold text-red-600 mt-1">{DASHBOARD_SUMMARY.blockedToday.toLocaleString()}</div>
+          <div className="text-2xl font-bold text-red-600 mt-1">{(summaryData?.blockedToday ?? 0).toLocaleString()}</div>
         </div>
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
           <div className="text-xs font-medium text-gray-500 uppercase">Blocked This Week</div>
-          <div className="text-2xl font-bold text-orange-600 mt-1">{DASHBOARD_SUMMARY.blockedThisWeek.toLocaleString()}</div>
+          <div className="text-2xl font-bold text-orange-600 mt-1">{(summaryData?.blockedThisWeek ?? 0).toLocaleString()}</div>
         </div>
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
           <div className="text-xs font-medium text-gray-500 uppercase">Active Threats</div>
-          <div className="text-2xl font-bold text-yellow-600 mt-1">{DASHBOARD_SUMMARY.activeThreats}</div>
+          <div className="text-2xl font-bold text-yellow-600 mt-1">{summaryData?.activeThreats ?? 0}</div>
         </div>
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
           <div className="text-xs font-medium text-gray-500 uppercase">Risk Level</div>
-          <div className="text-2xl font-bold text-[#FF7A50] mt-1">{DASHBOARD_SUMMARY.riskLevel}</div>
+          <div className="text-2xl font-bold text-[#FF7A50] mt-1">{summaryData?.riskLevel ?? '—'}</div>
         </div>
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
           <div className="text-xs font-medium text-gray-500 uppercase">Top Attacker</div>
-          <div className="text-sm font-bold text-gray-800 mt-1 font-mono">{DASHBOARD_SUMMARY.topAttackingIPs[0]?.ip}</div>
-          <div className="text-xs text-gray-500">{DASHBOARD_SUMMARY.topAttackingIPs[0]?.count} attacks</div>
+          <div className="text-sm font-bold text-gray-800 mt-1 font-mono">{summaryData?.topAttackingIPs?.[0]?.ip ?? '—'}</div>
+          <div className="text-xs text-gray-500">{summaryData?.topAttackingIPs?.[0]?.count ?? 0} attacks</div>
         </div>
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
           <div className="text-xs font-medium text-gray-500 uppercase">Unique Attackers</div>
-          <div className="text-2xl font-bold text-blue-600 mt-1">{DASHBOARD_SUMMARY.topAttackingIPs.length}</div>
+          <div className="text-2xl font-bold text-blue-600 mt-1">{summaryData?.topAttackingIPs?.length ?? 0}</div>
         </div>
       </div>
 
       {/* Attack Trend Chart */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
+      {summaryData?.attackTrendByHour && (
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6 mb-6">
         <h2 className="text-lg font-semibold text-gray-800 mb-4">Attack Trend (Last 24h)</h2>
         <div className="flex gap-4 mb-4 flex-wrap">
           {[
@@ -136,9 +177,9 @@ const DashboardPage = () => {
         </div>
         <div className="overflow-x-auto">
           <div className="flex items-end gap-2 min-w-[600px]" style={{ height: '200px' }}>
-            {DASHBOARD_SUMMARY.attackTrendByHour.map((hour) => {
+            {summaryData.attackTrendByHour.map((hour) => {
               const total = hour.sqli + hour.xss + hour.lfi + hour.rce + hour.other;
-              const maxTotal = Math.max(...DASHBOARD_SUMMARY.attackTrendByHour.map(h => h.sqli + h.xss + h.lfi + h.rce + h.other));
+              const maxTotal = Math.max(...summaryData.attackTrendByHour.map(h => h.sqli + h.xss + h.lfi + h.rce + h.other), 1);
               const scale = 180 / maxTotal;
               return (
                 <div key={hour.hour} className="flex-1 flex flex-col items-center gap-1">
@@ -156,30 +197,33 @@ const DashboardPage = () => {
           </div>
         </div>
       </div>
+      )}
 
       {/* Top Attacking IPs */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
+      {summaryData?.topAttackingIPs && summaryData.topAttackingIPs.length > 0 && (
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6 mb-6">
         <h2 className="text-lg font-semibold text-gray-800 mb-4">Top Attacking IPs</h2>
         <div className="space-y-3">
-          {DASHBOARD_SUMMARY.topAttackingIPs.map((ip, i) => {
-            const maxCount = DASHBOARD_SUMMARY.topAttackingIPs[0].count;
+          {summaryData.topAttackingIPs.map((ip, i) => {
+            const maxCount = summaryData.topAttackingIPs[0].count || 1;
             return (
-              <div key={ip.ip} className="flex items-center gap-4">
+              <div key={ip.ip} className="flex items-center gap-2 sm:gap-4">
                 <span className="text-sm font-medium text-gray-400 w-6">#{i + 1}</span>
-                <span className="text-sm font-mono text-gray-800 w-36">{ip.ip}</span>
+                <span className="text-xs sm:text-sm font-mono text-gray-800 w-28 sm:w-36 truncate">{ip.ip}</span>
                 <div className="flex-1 bg-gray-100 rounded-full h-2">
                   <div
                     className="bg-[#FF7A50] h-2 rounded-full transition-all"
                     style={{ width: `${(ip.count / maxCount) * 100}%` }}
                   />
                 </div>
-                <span className="text-sm font-medium text-gray-600 w-20 text-right">{ip.count} hits</span>
-                <span className="text-xs text-gray-400 w-28">{ip.country}</span>
+                <span className="text-xs sm:text-sm font-medium text-gray-600 w-16 sm:w-20 text-right">{ip.count} hits</span>
+                <span className="text-xs text-gray-400 w-20 sm:w-28 hidden sm:inline">{ip.country}</span>
               </div>
             );
           })}
         </div>
       </div>
+      )}
 
       {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 mb-4 sm:mb-6">
@@ -194,7 +238,7 @@ const DashboardPage = () => {
             </div>
             <div className="flex items-center gap-2 sm:gap-4 text-xs sm:text-sm">
               <button 
-                onClick={() => { setWeekFilter('current'); fetchAllData('current'); }}
+                onClick={() => switchWeek('current')}
                 className={`whitespace-nowrap pb-1 transition-colors ${
                   weekFilter === 'current' 
                     ? 'text-[#FF7A50] font-medium border-b-2 border-[#FF7A50]' 
@@ -204,7 +248,7 @@ const DashboardPage = () => {
                 Current Week
               </button>
               <button 
-                onClick={() => { setWeekFilter('previous'); fetchAllData('previous'); }}
+                onClick={() => switchWeek('previous')}
                 className={`whitespace-nowrap pb-1 transition-colors ${
                   weekFilter === 'previous' 
                     ? 'text-[#FF7A50] font-medium border-b-2 border-[#FF7A50]' 
@@ -218,6 +262,11 @@ const DashboardPage = () => {
           
           {/* Chart */}
           <div className="relative" style={{ height: '280px' }}>
+            {refreshing && (
+              <div className="absolute inset-0 bg-white/60 z-10 flex items-center justify-center rounded-lg">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#FF7A50]"></div>
+              </div>
+            )}
             {requestsData?.chartData && requestsData.chartData.length > 0 && (
               <div className="h-full flex gap-3 p-4">
                 {/* Y-axis */}
@@ -285,14 +334,15 @@ const DashboardPage = () => {
         </div>
 
         {/* Total User Card */}
-        <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6">
+        <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 relative">
+          {refreshing && (
+            <div className="absolute inset-0 bg-white/60 z-10 flex items-center justify-center rounded-xl">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#FF7A50]"></div>
+            </div>
+          )}
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-lg font-semibold text-gray-900">Total User</h2>
-            <select className="text-sm text-gray-600 border-none focus:outline-none">
-              <option>Last 7 Days</option>
-              <option>Last 30 Days</option>
-              <option>Last 90 Days</option>
-            </select>
+            <span className="text-sm text-gray-500">Last 7 Days</span>
           </div>
           
           {/* Circular Progress */}
@@ -361,7 +411,12 @@ const DashboardPage = () => {
       </div>
 
       {/* Origins Section */}
-      <div className="mb-4 sm:mb-6">
+      <div className="mb-4 sm:mb-6 relative">
+        {refreshing && (
+          <div className="absolute inset-0 bg-white/60 z-10 flex items-center justify-center rounded-xl">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#FF7A50]"></div>
+          </div>
+        )}
         <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-3 sm:mb-4">Origins</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
           {originsData?.topOrigins?.map((origin, index) => (
@@ -389,7 +444,12 @@ const DashboardPage = () => {
       </div>
 
       {/* Attack Classification Section */}
-      <div className="mb-4 sm:mb-6">
+      <div className="mb-4 sm:mb-6 relative">
+        {refreshing && (
+          <div className="absolute inset-0 bg-white/60 z-10 flex items-center justify-center rounded-xl">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#FF7A50]"></div>
+          </div>
+        )}
         <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-3 sm:mb-4">Attack Classification</h2>
         <p className="text-sm text-gray-500 mb-4">Note: Each request can trigger multiple attack detections. Total attacks may exceed total requests.</p>
         <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6">
@@ -442,7 +502,9 @@ const DashboardPage = () => {
                   <p className="text-xs text-gray-500 mt-1">Most Common</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-2xl font-bold text-green-600">100%</p>
+                  <p className="text-2xl font-bold text-green-600">
+                    {additionalStats?.blockRate != null ? `${additionalStats.blockRate.toFixed(1)}%` : '---'}
+                  </p>
                   <p className="text-xs text-gray-500 mt-1">Blocked</p>
                 </div>
               </div>
@@ -504,7 +566,7 @@ const DashboardPage = () => {
             <h3 className="text-base sm:text-lg font-semibold text-gray-800 mb-2">
               Block Rate & Response Codes
             </h3>
-            <p className="text-xs text-gray-500 mb-4">HTTP 403 = Blocked by WAF</p>
+            <p className="text-xs text-gray-500 mb-4">HTTP 400/403 = Blocked by WAF</p>
             <div className="flex items-center justify-center mb-6">
               <div className="relative w-32 h-32">
                 <svg className="w-full h-full transform -rotate-90">

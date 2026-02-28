@@ -60,16 +60,16 @@ export default function SystemHealthPage() {
   const { server, cpu, memory, requests, database, wafLayers } = SYSTEM_HEALTH;
 
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold text-gray-800 mb-2">System Health</h1>
-      <p className="text-gray-500 mb-6">Monitor WAF performance, resources, and layer status</p>
+    <div className="p-4 sm:p-6">
+      <h1 className="text-xl sm:text-2xl font-bold text-gray-800 mb-2"><span className="text-amber-500">(HARDCODED)</span> System Health</h1>
+      <p className="text-gray-500 text-sm mb-4 sm:mb-6">Monitor WAF performance, resources, and layer status</p>
 
       {/* Server Status Banner */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6 flex flex-wrap items-center justify-between gap-4">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6 mb-4 sm:mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
         <div className="flex items-center gap-3">
           <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse" />
           <div>
-            <div className="text-lg font-semibold text-gray-800">{server.status}</div>
+            <div className="text-base sm:text-lg font-semibold text-gray-800">{server.status}</div>
             <div className="text-sm text-gray-500">Uptime: {server.uptime}</div>
           </div>
         </div>
@@ -80,37 +80,37 @@ export default function SystemHealthPage() {
       </div>
 
       {/* Gauges Row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex flex-col items-center relative">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-4 sm:mb-6">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6 flex flex-col items-center relative">
           <Gauge value={cpu.usage} label={`CPU (${cpu.cores} cores)`} color="#FF7A50" />
-          <div className="mt-4 w-full">
+          <div className="mt-4 w-full overflow-hidden">
             <Sparkline data={cpu.history} color="#FF7A50" width={240} />
           </div>
         </div>
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex flex-col items-center relative">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6 flex flex-col items-center relative">
           <Gauge value={memory.usage} label="Memory" color="#3B82F6" />
           <div className="mt-2 text-sm text-gray-500 text-center">
             {memory.used} / {memory.total}
           </div>
-          <div className="mt-2 w-full">
+          <div className="mt-2 w-full overflow-hidden">
             <Sparkline data={memory.history} color="#3B82F6" width={240} />
           </div>
         </div>
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex flex-col items-center">
-          <div className="text-3xl font-bold text-gray-800">{requests.perSecond}</div>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6 flex flex-col items-center sm:col-span-2 lg:col-span-1">
+          <div className="text-2xl sm:text-3xl font-bold text-gray-800">{requests.perSecond}</div>
           <div className="text-sm text-gray-500">Requests/sec</div>
           <div className="text-sm text-gray-500 mt-1">Avg response: {requests.avgResponseTime}</div>
-          <div className="mt-4 w-full">
+          <div className="mt-4 w-full overflow-hidden">
             <Sparkline data={requests.history} color="#10B981" width={240} />
           </div>
         </div>
       </div>
 
       {/* Database + WAF Layers */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         {/* Database */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <h2 className="text-lg font-semibold text-gray-800 mb-4">Database</h2>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
+          <h2 className="text-base sm:text-lg font-semibold text-gray-800 mb-4">Database</h2>
           <div className="space-y-3">
             <div className="flex justify-between">
               <span className="text-sm text-gray-500">Status</span>
@@ -139,19 +139,19 @@ export default function SystemHealthPage() {
         </div>
 
         {/* WAF Layers */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <h2 className="text-lg font-semibold text-gray-800 mb-4">WAF Layers</h2>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
+          <h2 className="text-base sm:text-lg font-semibold text-gray-800 mb-4">WAF Layers</h2>
           <div className="space-y-3">
             {wafLayers.map((layer) => {
               const blockRate = ((layer.blocked / layer.processed) * 100).toFixed(1);
               return (
-                <div key={layer.name} className="flex items-center justify-between">
+                <div key={layer.name} className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 sm:gap-0">
                   <div className="flex items-center gap-3">
                     <span className="w-2 h-2 rounded-full bg-green-500" />
                     <span className="text-sm text-gray-800">{layer.name}</span>
                   </div>
-                  <div className="flex items-center gap-4 text-sm">
-                    <span className="text-gray-500">{layer.processed.toLocaleString()} processed</span>
+                  <div className="flex items-center gap-3 sm:gap-4 text-xs sm:text-sm ml-5 sm:ml-0">
+                    <span className="text-gray-500">{layer.processed.toLocaleString()} proc</span>
                     <span className="text-red-600 font-medium">{layer.blocked.toLocaleString()} blocked</span>
                     <span className="text-xs px-2 py-0.5 bg-orange-100 text-orange-800 rounded">
                       {blockRate}%

@@ -84,19 +84,13 @@ export async function GET() {
       }
     ]).toArray();
 
-    // Calculate total blocked rate (all attacks are blocked with 403)
+    // Calculate total blocked rate (400 = Bad Request rejected, 403 = Forbidden by WAF)
     const totalAttacks = await collection.countDocuments();
     const blockedAttacks = await collection.countDocuments({
-      'transaction.response.http_code': 403
+      'transaction.response.http_code': { $in: [400, 403] }
     });
 
-    const blockRate = totalAttacks > 0 ? ((blockedAttacks / totalAttacks) * 100).toFixed(1) : 100;
-
-    console.log('Additional Stats API:', {
-      severityCount: formattedSeverity.length,
-      methodsCount: methodsData.length,
-      blockRate
-    });
+    const blockRate = totalAttacks > 0 ? ((blockedAttacks / totalAttacks) * 100).toFixed(1) : 0;
 
     return NextResponse.json({
       success: true,
