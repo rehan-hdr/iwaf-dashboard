@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
+import { getAuthenticatedUser, handleApiError } from '@/lib/auth';
 
 export async function GET() {
   try {
+    const { role } = await getAuthenticatedUser();
     const client = await clientPromise;
     const db = client.db('waf_db');
     const collection = db.collection('attacks');
@@ -109,14 +111,6 @@ export async function GET() {
       }
     });
   } catch (error) {
-    console.error('Additional Stats API Error:', error);
-    return NextResponse.json(
-      { 
-        success: false, 
-        error: 'Failed to fetch additional stats',
-        message: error.message 
-      },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }

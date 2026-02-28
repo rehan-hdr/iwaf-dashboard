@@ -16,7 +16,7 @@ export default function Home() {
     <div className="flex min-h-screen bg-gray-50">
       <Sidebar isOpen={sidebarOpen} toggleSidebar={toggleSidebar} />
       <div className="flex-1 flex flex-col w-full lg:w-auto">
-        <Header userName="Ali Abdullah" toggleSidebar={toggleSidebar} />
+        <Header toggleSidebar={toggleSidebar} />
         <DashboardPage />
       </div>
     </div>

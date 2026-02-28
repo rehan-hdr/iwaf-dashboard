@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { DASHBOARD_SUMMARY } from '@/lib/mockData';
 
 const DashboardPage = () => {
   const [requestsData, setRequestsData] = useState(null);
@@ -84,7 +85,100 @@ const DashboardPage = () => {
           </svg>
           Dashboard
         </h1>
-        <p className="text-gray-500 text-sm mt-1">Welcome back, Ali</p>
+        <p className="text-gray-500 text-sm mt-1">Real-time security overview</p>
+      </div>
+
+      {/* Security Summary Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+          <div className="text-xs font-medium text-gray-500 uppercase">Blocked Today</div>
+          <div className="text-2xl font-bold text-red-600 mt-1">{DASHBOARD_SUMMARY.blockedToday.toLocaleString()}</div>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+          <div className="text-xs font-medium text-gray-500 uppercase">Blocked This Week</div>
+          <div className="text-2xl font-bold text-orange-600 mt-1">{DASHBOARD_SUMMARY.blockedThisWeek.toLocaleString()}</div>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+          <div className="text-xs font-medium text-gray-500 uppercase">Active Threats</div>
+          <div className="text-2xl font-bold text-yellow-600 mt-1">{DASHBOARD_SUMMARY.activeThreats}</div>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+          <div className="text-xs font-medium text-gray-500 uppercase">Risk Level</div>
+          <div className="text-2xl font-bold text-[#FF7A50] mt-1">{DASHBOARD_SUMMARY.riskLevel}</div>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+          <div className="text-xs font-medium text-gray-500 uppercase">Top Attacker</div>
+          <div className="text-sm font-bold text-gray-800 mt-1 font-mono">{DASHBOARD_SUMMARY.topAttackingIPs[0]?.ip}</div>
+          <div className="text-xs text-gray-500">{DASHBOARD_SUMMARY.topAttackingIPs[0]?.count} attacks</div>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+          <div className="text-xs font-medium text-gray-500 uppercase">Unique Attackers</div>
+          <div className="text-2xl font-bold text-blue-600 mt-1">{DASHBOARD_SUMMARY.topAttackingIPs.length}</div>
+        </div>
+      </div>
+
+      {/* Attack Trend Chart */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
+        <h2 className="text-lg font-semibold text-gray-800 mb-4">Attack Trend (Last 24h)</h2>
+        <div className="flex gap-4 mb-4 flex-wrap">
+          {[
+            { key: 'sqli', label: 'SQLi', color: '#3B82F6' },
+            { key: 'xss', label: 'XSS', color: '#FF7A50' },
+            { key: 'lfi', label: 'LFI', color: '#10B981' },
+            { key: 'rce', label: 'RCE', color: '#EF4444' },
+            { key: 'other', label: 'Other', color: '#6B7280' },
+          ].map((item) => (
+            <div key={item.key} className="flex items-center gap-2 text-sm">
+              <span className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
+              {item.label}
+            </div>
+          ))}
+        </div>
+        <div className="overflow-x-auto">
+          <div className="flex items-end gap-2 min-w-[600px]" style={{ height: '200px' }}>
+            {DASHBOARD_SUMMARY.attackTrendByHour.map((hour) => {
+              const total = hour.sqli + hour.xss + hour.lfi + hour.rce + hour.other;
+              const maxTotal = Math.max(...DASHBOARD_SUMMARY.attackTrendByHour.map(h => h.sqli + h.xss + h.lfi + h.rce + h.other));
+              const scale = 180 / maxTotal;
+              return (
+                <div key={hour.hour} className="flex-1 flex flex-col items-center gap-1">
+                  <div className="w-full flex flex-col-reverse">
+                    <div style={{ height: hour.sqli * scale, backgroundColor: '#3B82F6' }} className="w-full rounded-t-sm" />
+                    <div style={{ height: hour.xss * scale, backgroundColor: '#FF7A50' }} className="w-full" />
+                    <div style={{ height: hour.lfi * scale, backgroundColor: '#10B981' }} className="w-full" />
+                    <div style={{ height: hour.rce * scale, backgroundColor: '#EF4444' }} className="w-full" />
+                    <div style={{ height: hour.other * scale, backgroundColor: '#6B7280' }} className="w-full rounded-t-sm" />
+                  </div>
+                  <span className="text-xs text-gray-400 mt-1">{hour.hour}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Top Attacking IPs */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
+        <h2 className="text-lg font-semibold text-gray-800 mb-4">Top Attacking IPs</h2>
+        <div className="space-y-3">
+          {DASHBOARD_SUMMARY.topAttackingIPs.map((ip, i) => {
+            const maxCount = DASHBOARD_SUMMARY.topAttackingIPs[0].count;
+            return (
+              <div key={ip.ip} className="flex items-center gap-4">
+                <span className="text-sm font-medium text-gray-400 w-6">#{i + 1}</span>
+                <span className="text-sm font-mono text-gray-800 w-36">{ip.ip}</span>
+                <div className="flex-1 bg-gray-100 rounded-full h-2">
+                  <div
+                    className="bg-[#FF7A50] h-2 rounded-full transition-all"
+                    style={{ width: `${(ip.count / maxCount) * 100}%` }}
+                  />
+                </div>
+                <span className="text-sm font-medium text-gray-600 w-20 text-right">{ip.count} hits</span>
+                <span className="text-xs text-gray-400 w-28">{ip.country}</span>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Main Grid */}
@@ -274,8 +368,10 @@ const DashboardPage = () => {
             <div key={index} className="bg-white rounded-xl shadow-sm p-4 sm:p-6">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-gradient-to-br from-[#FF7A50] to-[#FF9068] rounded-full flex items-center justify-center text-2xl">
-                    {origin.flag}
+                  <div className="w-12 h-12 bg-gradient-to-br from-[#FF7A50] to-[#FF9068] rounded-full flex items-center justify-center">
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
                   </div>
                   <div>
                     <p className="text-sm text-gray-500">{origin.country}</p>

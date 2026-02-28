@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
+import { getAuthenticatedUser, handleApiError } from '@/lib/auth';
 
 export async function GET(request) {
   try {
+    const { role } = await getAuthenticatedUser();
     const client = await clientPromise;
     const db = client.db('waf_db');
     const collection = db.collection('attacks');
@@ -92,14 +94,6 @@ export async function GET(request) {
       }
     });
   } catch (error) {
-    console.error('Total Requests API Error:', error);
-    return NextResponse.json(
-      { 
-        success: false, 
-        error: 'Failed to fetch total requests data',
-        message: error.message 
-      },
-      { status: 500 }
-    );
+    return handleApiError(error);
   }
 }
