@@ -53,10 +53,12 @@ export async function POST(request) {
 
     const clerk = await clerkClient();
 
+    const appUrl = (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/+$/, '');
+
     const invitation = await clerk.invitations.createInvitation({
       emailAddress: email,
       publicMetadata: { role: assignedRole || 'viewer' },
-      redirectUrl: `${process.env.NEXT_PUBLIC_APP_URL}/sign-up`,
+      redirectUrl: `${appUrl}/sign-up`,
     });
 
     return NextResponse.json({
