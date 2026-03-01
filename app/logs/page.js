@@ -59,7 +59,13 @@ export default function LogsPage() {
 
   return (
     <div className="p-4 sm:p-6">
-      <h1 className="text-xl sm:text-2xl font-bold text-gray-800 mb-2">Attack Logs</h1>
+      <div className="flex items-center gap-3 mb-2 flex-wrap">
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-800">Attack Logs</h1>
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+          <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+          Live Data
+        </span>
+      </div>
       <p className="text-gray-500 text-sm mb-4 sm:mb-6">Real-time view of detected attacks and blocked requests from MongoDB</p>
 
       {/* Filters */}
@@ -171,7 +177,6 @@ export default function LogsPage() {
                   <th className="px-3 lg:px-4 py-3 text-xs font-medium text-gray-500 uppercase">URI</th>
                   <th className="px-3 lg:px-4 py-3 text-xs font-medium text-gray-500 uppercase">Attack Type</th>
                   <th className="px-3 lg:px-4 py-3 text-xs font-medium text-gray-500 uppercase">Severity</th>
-                  <th className="px-3 lg:px-4 py-3 text-xs font-medium text-gray-500 uppercase">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -200,17 +205,10 @@ export default function LogsPage() {
                           {log.severity}
                         </span>
                       </td>
-                      <td className="px-3 lg:px-4 py-3">
-                        <span className={`text-xs font-medium px-2 py-1 rounded ${
-                          log.action === 'Blocked' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'
-                        }`}>
-                          {log.action}
-                        </span>
-                      </td>
                     </tr>
                     {expandedRow === log.id && (
                       <tr>
-                        <td colSpan={8} className="px-3 lg:px-4 py-4 bg-gray-50">
+                        <td colSpan={7} className="px-3 lg:px-4 py-4 bg-gray-50">
                           <div className="text-sm flex flex-wrap gap-x-6 gap-y-1">
                             <div>
                               <span className="font-medium text-gray-700">Rule ID:</span>{' '}

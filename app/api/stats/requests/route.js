@@ -18,24 +18,25 @@ export async function GET(request) {
 
     // Calculate date range based on week filter
     const now = new Date();
-    const sevenDaysAgo = new Date();
-    const fourteenDaysAgo = new Date();
-    
-    if (week === 'previous') {
-      sevenDaysAgo.setDate(now.getDate() - 14);
-      fourteenDaysAgo.setDate(now.getDate() - 14);
-    } else {
-      sevenDaysAgo.setDate(now.getDate() - 7);
-    }
+    let startDate, endDate;
 
-    // Convert shipped_at string to Date for comparison
-    const startDate = week === 'previous' ? fourteenDaysAgo : sevenDaysAgo;
-    const endDate = week === 'previous' ? sevenDaysAgo : now;
+    if (week === 'previous') {
+      // Previous week: 14 days ago → 7 days ago
+      startDate = new Date(now);
+      startDate.setDate(now.getDate() - 14);
+      endDate = new Date(now);
+      endDate.setDate(now.getDate() - 7);
+    } else {
+      // Current week: 7 days ago → now
+      startDate = new Date(now);
+      startDate.setDate(now.getDate() - 7);
+      endDate = now;
+    }
     
     const recentRequests = await collection.countDocuments({
       'shipped_at': { 
-        $gte: startDate.toISOString(),
-        $lt: endDate.toISOString()
+        $gte: startDate,
+        $lt: endDate
       }
     });
 
@@ -46,13 +47,8 @@ export async function GET(request) {
     // Get data for chart - group by day of week
     const dailyData = await collection.aggregate([
       {
-        $addFields: {
-          shipDate: { $toDate: '$shipped_at' }
-        }
-      },
-      {
         $match: {
-          'shipDate': { 
+          shipped_at: { 
             $gte: startDate,
             $lt: endDate
           }
@@ -60,7 +56,7 @@ export async function GET(request) {
       },
       {
         $group: {
-          _id: { $dayOfWeek: '$shipDate' },
+          _id: { $dayOfWeek: '$shipped_at' },
           count: { $sum: 1 }
         }
       },

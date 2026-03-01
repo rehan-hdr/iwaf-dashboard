@@ -13,10 +13,10 @@ export async function GET() {
 
     // --- Blocked Today (400 = Bad Request rejected, 403 = Forbidden by WAF) ---
     const todayStart = new Date(now);
-    todayStart.setHours(0, 0, 0, 0);
+    todayStart.setUTCHours(0, 0, 0, 0);
     const blockedToday = await collection.countDocuments({
       'transaction.response.http_code': { $in: [400, 403] },
-      shipped_at: { $gte: todayStart.toISOString() },
+      shipped_at: { $gte: todayStart },
     });
 
     // --- Blocked This Week ---
@@ -24,34 +24,12 @@ export async function GET() {
     weekStart.setDate(now.getDate() - 7);
     const blockedThisWeek = await collection.countDocuments({
       'transaction.response.http_code': { $in: [400, 403] },
-      shipped_at: { $gte: weekStart.toISOString() },
+      shipped_at: { $gte: weekStart },
     });
 
-    // --- Active Threats (unique IPs with attacks in last 24h) ---
+    // --- For attack trend (last 24h) ---
     const dayAgo = new Date(now);
     dayAgo.setDate(now.getDate() - 1);
-    const activeThreatsResult = await collection.aggregate([
-      {
-        $match: {
-          'transaction.messages': { $exists: true, $not: { $size: 0 } },
-          shipped_at: { $gte: dayAgo.toISOString() },
-        },
-      },
-      {
-        $group: { _id: '$transaction.client_ip' },
-      },
-    ]).toArray();
-    const activeThreats = activeThreatsResult.length;
-
-    // --- Risk Level (derived) ---
-    const totalAttacksToday = await collection.countDocuments({
-      'transaction.messages': { $exists: true, $not: { $size: 0 } },
-      shipped_at: { $gte: todayStart.toISOString() },
-    });
-    let riskLevel = 'Low';
-    if (totalAttacksToday > 50) riskLevel = 'Critical';
-    else if (totalAttacksToday > 20) riskLevel = 'High';
-    else if (totalAttacksToday > 5) riskLevel = 'Medium';
 
     // --- Top Attacking IPs ---
     const topIPs = await collection.aggregate([
@@ -84,12 +62,7 @@ export async function GET() {
       {
         $match: {
           'transaction.messages': { $exists: true, $not: { $size: 0 } },
-          shipped_at: { $gte: dayAgo.toISOString() },
-        },
-      },
-      {
-        $addFields: {
-          shipDate: { $toDate: '$shipped_at' },
+          shipped_at: { $gte: dayAgo },
         },
       },
       {
@@ -97,7 +70,7 @@ export async function GET() {
       },
       {
         $project: {
-          hour: { $hour: '$shipDate' },
+          hour: { $hour: '$shipped_at' },
           tags: '$transaction.messages.details.tags',
         },
       },
@@ -141,8 +114,6 @@ export async function GET() {
       data: {
         blockedToday,
         blockedThisWeek,
-        activeThreats,
-        riskLevel,
         topAttackingIPs,
         attackTrendByHour,
         totalBlocked,

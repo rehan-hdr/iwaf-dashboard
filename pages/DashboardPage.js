@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 
 const DashboardPage = () => {
   const [requestsData, setRequestsData] = useState(null);
@@ -13,21 +13,20 @@ const DashboardPage = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [weekFilter, setWeekFilter] = useState('current'); // 'current' or 'previous'
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const weekFilterRef = useRef(weekFilter);
+  weekFilterRef.current = weekFilter;
 
-  useEffect(() => {
-    fetchAllData();
-  }, []);
-
-  // Full initial load — only on mount
-  const fetchAllData = async () => {
-    setLoading(true);
-    setError(null);
+  // Fetch all dashboard data (used for initial load + polling)
+  const fetchAllData = useCallback(async (isBackground = false) => {
+    if (!isBackground) { setLoading(true); setError(null); }
     try {
+      const week = weekFilterRef.current;
       const [requestsRes, usersRes, originsRes, classificationsRes, additionalRes, summaryRes] = await Promise.all([
-        fetch('/api/stats/requests?week=current'),
-        fetch('/api/stats/users?week=current'),
-        fetch('/api/stats/origins?week=current'),
-        fetch('/api/stats/classifications?week=current'),
+        fetch(`/api/stats/requests?week=${week}`),
+        fetch(`/api/stats/users?week=${week}`),
+        fetch(`/api/stats/origins?week=${week}`),
+        fetch(`/api/stats/classifications?week=${week}`),
         fetch('/api/stats/additional'),
         fetch('/api/stats/summary')
       ]);
@@ -51,13 +50,27 @@ const DashboardPage = () => {
       setClassificationsData(classifications.data);
       setAdditionalStats(additional.data);
       setSummaryData(summary.data);
+      setLastUpdated(new Date());
     } catch (err) {
-      setError(err.message);
+      if (!isBackground) setError(err.message);
       console.error('Error fetching dashboard data:', err);
     } finally {
-      setLoading(false);
+      if (!isBackground) setLoading(false);
     }
-  };
+  }, []);
+
+  // Initial load
+  useEffect(() => {
+    fetchAllData(false);
+  }, [fetchAllData]);
+
+  // Auto-refresh every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchAllData(true);
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [fetchAllData]);
 
   // Lightweight refresh — only week-dependent APIs, no full page spinner
   const switchWeek = async (week) => {
@@ -118,18 +131,29 @@ const DashboardPage = () => {
     <div className="p-4 sm:p-6 lg:p-8">
       {/* Page Title */}
       <div className="mb-6 sm:mb-8">
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 flex items-center gap-2">
-          <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-          </svg>
-          Dashboard
-        </h1>
-        <p className="text-gray-500 text-sm mt-1">Real-time security overview</p>
+        <div className="flex items-center gap-3 flex-wrap">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 flex items-center gap-2">
+            <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+            </svg>
+            Dashboard
+          </h1>
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+            Live Data
+          </span>
+        </div>
+        <p className="text-gray-500 text-sm mt-1">Real-time security overview — All data sourced from MongoDB</p>
       </div>
 
       {/* Security Summary Cards */}
-      <h2 className="text-lg font-semibold text-gray-800 mb-3">Security Summary</h2>
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-lg font-semibold text-gray-800">Security Summary</h2>
+        {lastUpdated && (
+          <span className="text-xs text-gray-400">Updated {lastUpdated.toLocaleTimeString()} · refreshes every 30s</span>
+        )}
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
           <div className="text-xs font-medium text-gray-500 uppercase">Blocked Today</div>
           <div className="text-2xl font-bold text-red-600 mt-1">{(summaryData?.blockedToday ?? 0).toLocaleString()}</div>
@@ -137,14 +161,6 @@ const DashboardPage = () => {
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
           <div className="text-xs font-medium text-gray-500 uppercase">Blocked This Week</div>
           <div className="text-2xl font-bold text-orange-600 mt-1">{(summaryData?.blockedThisWeek ?? 0).toLocaleString()}</div>
-        </div>
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-          <div className="text-xs font-medium text-gray-500 uppercase">Active Threats</div>
-          <div className="text-2xl font-bold text-yellow-600 mt-1">{summaryData?.activeThreats ?? 0}</div>
-        </div>
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-          <div className="text-xs font-medium text-gray-500 uppercase">Risk Level</div>
-          <div className="text-2xl font-bold text-[#FF7A50] mt-1">{summaryData?.riskLevel ?? '—'}</div>
         </div>
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
           <div className="text-xs font-medium text-gray-500 uppercase">Top Attacker</div>
@@ -175,27 +191,45 @@ const DashboardPage = () => {
             </div>
           ))}
         </div>
-        <div className="overflow-x-auto">
-          <div className="flex items-end gap-2 min-w-[600px]" style={{ height: '200px' }}>
-            {summaryData.attackTrendByHour.map((hour) => {
-              const total = hour.sqli + hour.xss + hour.lfi + hour.rce + hour.other;
-              const maxTotal = Math.max(...summaryData.attackTrendByHour.map(h => h.sqli + h.xss + h.lfi + h.rce + h.other), 1);
-              const scale = 180 / maxTotal;
-              return (
-                <div key={hour.hour} className="flex-1 flex flex-col items-center gap-1">
-                  <div className="w-full flex flex-col-reverse">
-                    <div style={{ height: hour.sqli * scale, backgroundColor: '#3B82F6' }} className="w-full rounded-t-sm" />
-                    <div style={{ height: hour.xss * scale, backgroundColor: '#FF7A50' }} className="w-full" />
-                    <div style={{ height: hour.lfi * scale, backgroundColor: '#10B981' }} className="w-full" />
-                    <div style={{ height: hour.rce * scale, backgroundColor: '#EF4444' }} className="w-full" />
-                    <div style={{ height: hour.other * scale, backgroundColor: '#6B7280' }} className="w-full rounded-t-sm" />
-                  </div>
-                  <span className="text-xs text-gray-400 mt-1">{hour.hour}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        {(() => {
+          const hasData = summaryData.attackTrendByHour.some(h => h.sqli + h.xss + h.lfi + h.rce + h.other > 0);
+          if (!hasData) {
+            return (
+              <div className="flex items-center justify-center" style={{ height: '200px' }}>
+                <p className="text-gray-400 text-sm">No attacks detected in the last 24 hours</p>
+              </div>
+            );
+          }
+          return (
+            <div className="overflow-x-auto">
+              <div className="flex items-end gap-2 min-w-[600px]" style={{ height: '200px' }}>
+                {summaryData.attackTrendByHour.map((hour) => {
+                  const total = hour.sqli + hour.xss + hour.lfi + hour.rce + hour.other;
+                  const maxTotal = Math.max(...summaryData.attackTrendByHour.map(h => h.sqli + h.xss + h.lfi + h.rce + h.other), 1);
+                  const scale = 180 / maxTotal;
+                  return (
+                    <div key={hour.hour} className="flex-1 flex flex-col items-center gap-1 group relative">
+                      <div className="w-full flex flex-col-reverse">
+                        {hour.sqli > 0 && <div style={{ height: hour.sqli * scale, backgroundColor: '#3B82F6' }} className="w-full rounded-t-sm" />}
+                        {hour.xss > 0 && <div style={{ height: hour.xss * scale, backgroundColor: '#FF7A50' }} className="w-full" />}
+                        {hour.lfi > 0 && <div style={{ height: hour.lfi * scale, backgroundColor: '#10B981' }} className="w-full" />}
+                        {hour.rce > 0 && <div style={{ height: hour.rce * scale, backgroundColor: '#EF4444' }} className="w-full" />}
+                        {hour.other > 0 && <div style={{ height: hour.other * scale, backgroundColor: '#6B7280' }} className="w-full rounded-t-sm" />}
+                      </div>
+                      {/* Tooltip */}
+                      {total > 0 && (
+                        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20">
+                          {total} attacks
+                        </div>
+                      )}
+                      <span className="text-xs text-gray-400 mt-1">{hour.hour}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
       </div>
       )}
 
@@ -267,7 +301,16 @@ const DashboardPage = () => {
                 <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#FF7A50]"></div>
               </div>
             )}
-            {requestsData?.chartData && requestsData.chartData.length > 0 && (
+            {requestsData?.chartData && requestsData.chartData.length > 0 && (() => {
+              const totalCount = requestsData.chartData.reduce((sum, d) => sum + d.count, 0);
+              if (totalCount === 0) {
+                return (
+                  <div className="h-full flex items-center justify-center">
+                    <p className="text-gray-400 text-sm">No requests in the selected period</p>
+                  </div>
+                );
+              }
+              return (
               <div className="h-full flex gap-3 p-4">
                 {/* Y-axis */}
                 <div className="flex flex-col justify-between text-xs text-gray-400 pt-2 pb-8">
@@ -329,7 +372,8 @@ const DashboardPage = () => {
                   </div>
                 </div>
               </div>
-            )}
+              );
+            })()}
           </div>
         </div>
 

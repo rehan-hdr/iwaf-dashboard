@@ -42,8 +42,16 @@ export default function RulesPage() {
 
   return (
     <div className="p-4 sm:p-6">
-      <h1 className="text-xl sm:text-2xl font-bold text-gray-800 mb-2"><span className="text-amber-500">(HARDCODED)</span> Rule Management</h1>
-      <p className="text-gray-500 text-sm mb-4 sm:mb-6">Configure ModSecurity CRS rules and custom rules</p>
+      <div className="flex items-center gap-3 mb-2 flex-wrap">
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-800">Rule Management</h1>
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
+          Hardcoded Data
+        </span>
+      </div>
+      <p className="text-gray-500 text-sm mb-1">Configure ModSecurity CRS rules and custom rules</p>
+      <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs px-3 py-2 rounded-lg mb-4 sm:mb-6">
+        <strong>Note:</strong> Rule table data (IDs, names, trigger counts, enabled status) is static sample data. Toggle changes are not persisted.
+      </div>
 
       {/* Category Breakdown */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 mb-4 sm:mb-6">

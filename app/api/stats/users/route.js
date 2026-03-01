@@ -18,7 +18,7 @@ export async function GET() {
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
     const recentUsers = await collection.distinct('transaction.client_ip', {
-      'shipped_at': { $gte: sevenDaysAgo.toISOString() }
+      'shipped_at': { $gte: sevenDaysAgo }
     });
 
     // Classify users as normal or malicious based on attack presence

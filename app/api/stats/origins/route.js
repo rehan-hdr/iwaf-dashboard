@@ -57,24 +57,51 @@ export async function GET() {
       return { country: 'Unknown', countryCode: 'XX' };
     }
 
-    // Get top 3 IPs and lookup their countries
+    // Get top 3 IPs and lookup their countries + calculate real trend
+    const now = new Date();
+    const sevenDaysAgo = new Date(now);
+    sevenDaysAgo.setDate(now.getDate() - 7);
+    const fourteenDaysAgo = new Date(now);
+    fourteenDaysAgo.setDate(now.getDate() - 14);
+
     const topOrigins = await Promise.all(
-      ipData.slice(0, 3).map(async (item, index) => {
+      ipData.slice(0, 3).map(async (item) => {
         const geoData = await getCountryFromIP(item._id);
         
         // For local IPs, show the IP in the country field to distinguish them
         const displayCountry = geoData.ip 
           ? `${geoData.country} (${geoData.ip})` 
           : geoData.country;
-        
+
+        // Calculate real trend: compare last 7 days vs previous 7 days
+        const currentWeekCount = await collection.countDocuments({
+          'transaction.client_ip': item._id,
+          shipped_at: { $gte: sevenDaysAgo }
+        });
+        const previousWeekCount = await collection.countDocuments({
+          'transaction.client_ip': item._id,
+          shipped_at: { $gte: fourteenDaysAgo, $lt: sevenDaysAgo }
+        });
+
+        let trendPercent = 0;
+        let trendUp = true;
+        if (previousWeekCount > 0) {
+          trendPercent = Math.round(((currentWeekCount - previousWeekCount) / previousWeekCount) * 100);
+          trendUp = trendPercent >= 0;
+          trendPercent = Math.abs(trendPercent);
+        } else if (currentWeekCount > 0) {
+          trendPercent = 100; // All new traffic
+          trendUp = true;
+        }
+
         return {
           ip: item._id,
           country: displayCountry,
           countryCode: geoData.countryCode,
           requestsPerSec: (item.count / (7 * 24 * 60 * 60)).toFixed(3),
           totalRequests: item.count,
-          trend: Math.floor(Math.random() * 20), // Placeholder trend
-          trendUp: Math.random() > 0.5,
+          trend: trendPercent,
+          trendUp,
           lastSeen: item.lastSeen
         };
       })

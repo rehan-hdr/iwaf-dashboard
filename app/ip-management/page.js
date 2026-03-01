@@ -42,8 +42,16 @@ export default function IpManagementPage() {
 
   return (
     <div className="p-4 sm:p-6">
-      <h1 className="text-xl sm:text-2xl font-bold text-gray-800 mb-2"><span className="text-amber-500">(HARDCODED)</span> IP Management</h1>
-      <p className="text-gray-500 text-sm mb-4 sm:mb-6">Manage blocked and whitelisted IP addresses</p>
+      <div className="flex items-center gap-3 mb-2 flex-wrap">
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-800">IP Management</h1>
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
+          Hardcoded Data
+        </span>
+      </div>
+      <p className="text-gray-500 text-sm mb-1">Manage blocked and whitelisted IP addresses</p>
+      <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs px-3 py-2 rounded-lg mb-4 sm:mb-6">
+        <strong>Note:</strong> Blocklist and Whitelist tables use static sample data. Changes are not persisted.
+      </div>
 
       {/* Tabs */}
       <div className="flex gap-1 mb-4 sm:mb-6 bg-gray-100 p-1 rounded-lg w-full sm:w-fit">
