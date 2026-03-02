@@ -101,6 +101,36 @@ export async function GET() {
 
     const attackTrendByHour = Object.values(hourlyMap);
 
+    // --- ML Blocked Trend by Hour (last 24h) ---
+    const mlBlockedCol = db.collection('ml_blocked_requests');
+    const mlAllowedCol = db.collection('ml_allowed_requests');
+
+    const recentMlBlocked = await mlBlockedCol.aggregate([
+      { $match: { timestamp: { $gte: dayAgo } } },
+      { $project: { hour: { $hour: '$timestamp' }, attack_type: 1 } },
+    ]).toArray();
+
+    // Merge ML data into the same hourly buckets
+    for (const item of recentMlBlocked) {
+      const hourBucket = Math.floor(item.hour / 2) * 2;
+      const label = `${String(hourBucket).padStart(2, '0')}:00`;
+      if (!hourlyMap[label]) continue;
+      const type = (item.attack_type || '').toLowerCase();
+      if (type === 'sqli') hourlyMap[label].ml_sqli = (hourlyMap[label].ml_sqli || 0) + 1;
+      else if (type === 'xss') hourlyMap[label].ml_xss = (hourlyMap[label].ml_xss || 0) + 1;
+      else if (type === 'lfi') hourlyMap[label].ml_lfi = (hourlyMap[label].ml_lfi || 0) + 1;
+      else if (type === 'probe') hourlyMap[label].ml_probe = (hourlyMap[label].ml_probe || 0) + 1;
+    }
+
+    // Ensure all hourly buckets have ML fields
+    const finalTrend = Object.values(hourlyMap).map(h => ({
+      ...h,
+      ml_sqli: h.ml_sqli || 0,
+      ml_xss: h.ml_xss || 0,
+      ml_lfi: h.ml_lfi || 0,
+      ml_probe: h.ml_probe || 0,
+    }));
+
     // --- Total stats (400 + 403 = blocked/rejected by WAF) ---
     const totalBlocked = await collection.countDocuments({
       'transaction.response.http_code': { $in: [400, 403] },
@@ -109,15 +139,48 @@ export async function GET() {
       'transaction.messages': { $exists: true, $not: { $size: 0 } },
     });
 
+    // --- ML Layer Stats ---
+    const [mlBlockedToday, mlBlockedThisWeek, mlAllowedToday, mlAllowedThisWeek, totalMlBlocked, totalMlAllowed] = await Promise.all([
+      mlBlockedCol.countDocuments({ timestamp: { $gte: todayStart } }),
+      mlBlockedCol.countDocuments({ timestamp: { $gte: weekStart } }),
+      mlAllowedCol.countDocuments({ timestamp: { $gte: todayStart } }),
+      mlAllowedCol.countDocuments({ timestamp: { $gte: weekStart } }),
+      mlBlockedCol.countDocuments(),
+      mlAllowedCol.countDocuments(),
+    ]);
+
+    // Top ML attacking IPs
+    const topMlIPs = await mlBlockedCol.aggregate([
+      { $group: { _id: '$source_ip', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: 5 },
+    ]).toArray();
+
+    const topMlAttackingIPs = topMlIPs.map((ip) => ({
+      ip: ip._id,
+      count: ip.count,
+      country: ip._id.startsWith('192.168.') || ip._id.startsWith('10.') || /^172\.(1[6-9]|2[0-9]|3[01])\./.test(ip._id) || ip._id === '127.0.0.1'
+        ? 'Local Network'
+        : 'External',
+    }));
+
     return NextResponse.json({
       success: true,
       data: {
         blockedToday,
         blockedThisWeek,
         topAttackingIPs,
-        attackTrendByHour,
+        attackTrendByHour: finalTrend,
         totalBlocked,
         totalAttacks,
+        // ML Layer data
+        mlBlockedToday,
+        mlBlockedThisWeek,
+        mlAllowedToday,
+        mlAllowedThisWeek,
+        totalMlBlocked,
+        totalMlAllowed,
+        topMlAttackingIPs,
       },
     });
   } catch (error) {

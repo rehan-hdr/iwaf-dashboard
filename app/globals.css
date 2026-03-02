@@ -48,10 +48,10 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #FF7A50;
+  background: #c4c4c4;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #ff6a40;
+  background: #a0a0a0;
 }

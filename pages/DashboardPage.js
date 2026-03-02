@@ -10,12 +10,15 @@ const DashboardPage = () => {
   const [additionalStats, setAdditionalStats] = useState(null);
   const [summaryData, setSummaryData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [weekFilter, setWeekFilter] = useState('current'); // 'current' or 'previous'
+  const [classificationSource, setClassificationSource] = useState('modsecurity'); // 'modsecurity' or 'ml_blocked'
+  const [classificationLoading, setClassificationLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
   const weekFilterRef = useRef(weekFilter);
   weekFilterRef.current = weekFilter;
+  const classificationSourceRef = useRef(classificationSource);
+  classificationSourceRef.current = classificationSource;
 
   // Fetch all dashboard data (used for initial load + polling)
   const fetchAllData = useCallback(async (isBackground = false) => {
@@ -26,7 +29,7 @@ const DashboardPage = () => {
         fetch(`/api/stats/requests?week=${week}`),
         fetch(`/api/stats/users?week=${week}`),
         fetch(`/api/stats/origins?week=${week}`),
-        fetch(`/api/stats/classifications?week=${week}`),
+        fetch(`/api/stats/classifications?week=${week}&source=${classificationSourceRef.current}`),
         fetch('/api/stats/additional'),
         fetch('/api/stats/summary')
       ]);
@@ -75,13 +78,12 @@ const DashboardPage = () => {
   // Lightweight refresh — only week-dependent APIs, no full page spinner
   const switchWeek = async (week) => {
     setWeekFilter(week);
-    setRefreshing(true);
     try {
       const [requestsRes, usersRes, originsRes, classificationsRes] = await Promise.all([
         fetch(`/api/stats/requests?week=${week}`),
         fetch(`/api/stats/users?week=${week}`),
         fetch(`/api/stats/origins?week=${week}`),
-        fetch(`/api/stats/classifications?week=${week}`),
+        fetch(`/api/stats/classifications?week=${week}&source=${classificationSourceRef.current}`),
       ]);
 
       if (!requestsRes.ok || !usersRes.ok || !originsRes.ok || !classificationsRes.ok) {
@@ -101,8 +103,22 @@ const DashboardPage = () => {
       setClassificationsData(classifications.data);
     } catch (err) {
       console.error('Error switching week:', err);
+    }
+  };
+
+  // Classification source switch — only refreshes classification section
+  const switchClassificationSource = async (source) => {
+    setClassificationSource(source);
+    setClassificationLoading(true);
+    try {
+      const res = await fetch(`/api/stats/classifications?source=${source}`);
+      if (!res.ok) throw new Error('Failed to fetch classifications');
+      const json = await res.json();
+      setClassificationsData(json.data);
+    } catch (err) {
+      console.error('Error switching classification source:', err);
     } finally {
-      setRefreshing(false);
+      setClassificationLoading(false);
     }
   };
 
@@ -153,14 +169,16 @@ const DashboardPage = () => {
           <span className="text-xs text-gray-400">Updated {lastUpdated.toLocaleTimeString()} · refreshes every 30s</span>
         )}
       </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-          <div className="text-xs font-medium text-gray-500 uppercase">Blocked Today</div>
-          <div className="text-2xl font-bold text-red-600 mt-1">{(summaryData?.blockedToday ?? 0).toLocaleString()}</div>
+          <div className="text-xs font-medium text-gray-500 uppercase">Total Blocked Today</div>
+          <div className="text-2xl font-bold text-red-600 mt-1">{((summaryData?.blockedToday ?? 0) + (summaryData?.mlBlockedToday ?? 0)).toLocaleString()}</div>
+          <div className="text-xs text-gray-400 mt-1">ModSec: {summaryData?.blockedToday ?? 0} · ML: {summaryData?.mlBlockedToday ?? 0}</div>
         </div>
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-          <div className="text-xs font-medium text-gray-500 uppercase">Blocked This Week</div>
-          <div className="text-2xl font-bold text-orange-600 mt-1">{(summaryData?.blockedThisWeek ?? 0).toLocaleString()}</div>
+          <div className="text-xs font-medium text-gray-500 uppercase">Total Blocked This Week</div>
+          <div className="text-2xl font-bold text-orange-600 mt-1">{((summaryData?.blockedThisWeek ?? 0) + (summaryData?.mlBlockedThisWeek ?? 0)).toLocaleString()}</div>
+          <div className="text-xs text-gray-400 mt-1">ModSec: {summaryData?.blockedThisWeek ?? 0} · ML: {summaryData?.mlBlockedThisWeek ?? 0}</div>
         </div>
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
           <div className="text-xs font-medium text-gray-500 uppercase">Top Attacker</div>
@@ -168,8 +186,37 @@ const DashboardPage = () => {
           <div className="text-xs text-gray-500">{summaryData?.topAttackingIPs?.[0]?.count ?? 0} attacks</div>
         </div>
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-          <div className="text-xs font-medium text-gray-500 uppercase">Unique Attackers</div>
-          <div className="text-2xl font-bold text-blue-600 mt-1">{summaryData?.topAttackingIPs?.length ?? 0}</div>
+          <div className="text-xs font-medium text-gray-500 uppercase">Benign Today</div>
+          <div className="text-2xl font-bold text-green-600 mt-1">{(summaryData?.mlAllowedToday ?? 0).toLocaleString()}</div>
+          <div className="text-xs text-gray-400 mt-1">Total: {(summaryData?.totalMlAllowed ?? 0).toLocaleString()}</div>
+        </div>
+      </div>
+
+      {/* Firewall Layer Breakdown */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        <div className="bg-white rounded-xl shadow-sm border-l-4 border-l-red-500 border border-gray-100 p-4">
+          <div className="flex items-center gap-2 mb-1">
+            <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg>
+            <span className="text-xs font-semibold text-gray-500 uppercase">ModSecurity Blocked</span>
+          </div>
+          <div className="text-2xl font-bold text-gray-900">{(summaryData?.totalBlocked ?? 0).toLocaleString()}</div>
+          <div className="text-xs text-gray-400">Layer 1 — Rule-based detection</div>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm border-l-4 border-l-purple-500 border border-gray-100 p-4">
+          <div className="flex items-center gap-2 mb-1">
+            <svg className="w-4 h-4 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+            <span className="text-xs font-semibold text-gray-500 uppercase">ML Blocked</span>
+          </div>
+          <div className="text-2xl font-bold text-gray-900">{(summaryData?.totalMlBlocked ?? 0).toLocaleString()}</div>
+          <div className="text-xs text-gray-400">Layer 2 — ML-based detection</div>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm border-l-4 border-l-green-500 border border-gray-100 p-4">
+          <div className="flex items-center gap-2 mb-1">
+            <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            <span className="text-xs font-semibold text-gray-500 uppercase">Benign</span>
+          </div>
+          <div className="text-2xl font-bold text-gray-900">{(summaryData?.totalMlAllowed ?? 0).toLocaleString()}</div>
+          <div className="text-xs text-gray-400">Passed both layers — Benign</div>
         </div>
       </div>
 
@@ -184,6 +231,10 @@ const DashboardPage = () => {
             { key: 'lfi', label: 'LFI', color: '#10B981' },
             { key: 'rce', label: 'RCE', color: '#EF4444' },
             { key: 'other', label: 'Other', color: '#6B7280' },
+            { key: 'ml_sqli', label: 'SQLi (ML)', color: '#60A5FA' },
+            { key: 'ml_xss', label: 'XSS (ML)', color: '#FBBF24' },
+            { key: 'ml_lfi', label: 'LFI (ML)', color: '#34D399' },
+            { key: 'ml_probe', label: 'Probe (ML)', color: '#A78BFA' },
           ].map((item) => (
             <div key={item.key} className="flex items-center gap-2 text-sm">
               <span className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
@@ -192,7 +243,7 @@ const DashboardPage = () => {
           ))}
         </div>
         {(() => {
-          const hasData = summaryData.attackTrendByHour.some(h => h.sqli + h.xss + h.lfi + h.rce + h.other > 0);
+          const hasData = summaryData.attackTrendByHour.some(h => h.sqli + h.xss + h.lfi + h.rce + h.other + (h.ml_sqli || 0) + (h.ml_xss || 0) + (h.ml_lfi || 0) + (h.ml_probe || 0) > 0);
           if (!hasData) {
             return (
               <div className="flex items-center justify-center" style={{ height: '200px' }}>
@@ -201,27 +252,48 @@ const DashboardPage = () => {
             );
           }
           return (
-            <div className="overflow-x-auto">
-              <div className="flex items-end gap-2 min-w-[600px]" style={{ height: '200px' }}>
+            <div className="overflow-x-auto overflow-y-visible">
+              <div className="flex items-end gap-1 min-w-[600px]" style={{ height: '220px', paddingTop: '20px' }}>
                 {summaryData.attackTrendByHour.map((hour) => {
-                  const total = hour.sqli + hour.xss + hour.lfi + hour.rce + hour.other;
-                  const maxTotal = Math.max(...summaryData.attackTrendByHour.map(h => h.sqli + h.xss + h.lfi + h.rce + h.other), 1);
-                  const scale = 180 / maxTotal;
+                  const total = hour.sqli + hour.xss + hour.lfi + hour.rce + hour.other + (hour.ml_sqli || 0) + (hour.ml_xss || 0) + (hour.ml_lfi || 0) + (hour.ml_probe || 0);
+                  const maxTotal = Math.max(...summaryData.attackTrendByHour.map(h => h.sqli + h.xss + h.lfi + h.rce + h.other + (h.ml_sqli || 0) + (h.ml_xss || 0) + (h.ml_lfi || 0) + (h.ml_probe || 0)), 1);
+                  const scale = 160 / maxTotal;
                   return (
-                    <div key={hour.hour} className="flex-1 flex flex-col items-center gap-1 group relative">
-                      <div className="w-full flex flex-col-reverse">
-                        {hour.sqli > 0 && <div style={{ height: hour.sqli * scale, backgroundColor: '#3B82F6' }} className="w-full rounded-t-sm" />}
-                        {hour.xss > 0 && <div style={{ height: hour.xss * scale, backgroundColor: '#FF7A50' }} className="w-full" />}
-                        {hour.lfi > 0 && <div style={{ height: hour.lfi * scale, backgroundColor: '#10B981' }} className="w-full" />}
-                        {hour.rce > 0 && <div style={{ height: hour.rce * scale, backgroundColor: '#EF4444' }} className="w-full" />}
-                        {hour.other > 0 && <div style={{ height: hour.other * scale, backgroundColor: '#6B7280' }} className="w-full rounded-t-sm" />}
-                      </div>
-                      {/* Tooltip */}
-                      {total > 0 && (
-                        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20">
-                          {total} attacks
+                    <div key={hour.hour} className="flex-1 flex flex-col items-center group relative">
+                      {/* Full-height hover target + bars */}
+                      <div className="w-full relative flex-1 flex items-end cursor-pointer">
+                        <div className="absolute inset-0 z-10" />
+                        <div className="w-full flex flex-col-reverse">
+                          {hour.sqli > 0 && <div style={{ height: hour.sqli * scale, backgroundColor: '#3B82F6' }} className="w-full rounded-t-sm" />}
+                          {hour.xss > 0 && <div style={{ height: hour.xss * scale, backgroundColor: '#FF7A50' }} className="w-full" />}
+                          {hour.lfi > 0 && <div style={{ height: hour.lfi * scale, backgroundColor: '#10B981' }} className="w-full" />}
+                          {hour.rce > 0 && <div style={{ height: hour.rce * scale, backgroundColor: '#EF4444' }} className="w-full" />}
+                          {hour.other > 0 && <div style={{ height: hour.other * scale, backgroundColor: '#6B7280' }} className="w-full" />}
+                          {(hour.ml_sqli || 0) > 0 && <div style={{ height: hour.ml_sqli * scale, backgroundColor: '#60A5FA' }} className="w-full" />}
+                          {(hour.ml_xss || 0) > 0 && <div style={{ height: hour.ml_xss * scale, backgroundColor: '#FBBF24' }} className="w-full" />}
+                          {(hour.ml_lfi || 0) > 0 && <div style={{ height: hour.ml_lfi * scale, backgroundColor: '#34D399' }} className="w-full" />}
+                          {(hour.ml_probe || 0) > 0 && <div style={{ height: hour.ml_probe * scale, backgroundColor: '#A78BFA' }} className="w-full rounded-t-sm" />}
                         </div>
-                      )}
+                      </div>
+                      {/* Tooltip — fixed to bottom of chart, above hour label */}
+                      <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 px-2.5 py-2 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-30 shadow-lg" style={{ minWidth: '120px' }}>
+                        {total > 0 ? (
+                          <div className="space-y-0.5">
+                            <div className="font-semibold border-b border-gray-700 pb-1 mb-1">{hour.hour} — {total} attacks</div>
+                            {hour.sqli > 0 && <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full inline-block flex-shrink-0" style={{backgroundColor:'#3B82F6'}} />{hour.sqli} SQLi</div>}
+                            {hour.xss > 0 && <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full inline-block flex-shrink-0" style={{backgroundColor:'#FF7A50'}} />{hour.xss} XSS</div>}
+                            {hour.lfi > 0 && <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full inline-block flex-shrink-0" style={{backgroundColor:'#10B981'}} />{hour.lfi} LFI</div>}
+                            {hour.rce > 0 && <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full inline-block flex-shrink-0" style={{backgroundColor:'#EF4444'}} />{hour.rce} RCE</div>}
+                            {hour.other > 0 && <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full inline-block flex-shrink-0" style={{backgroundColor:'#6B7280'}} />{hour.other} Other</div>}
+                            {(hour.ml_sqli || 0) > 0 && <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full inline-block flex-shrink-0" style={{backgroundColor:'#60A5FA'}} />{hour.ml_sqli} SQLi (ML)</div>}
+                            {(hour.ml_xss || 0) > 0 && <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full inline-block flex-shrink-0" style={{backgroundColor:'#FBBF24'}} />{hour.ml_xss} XSS (ML)</div>}
+                            {(hour.ml_lfi || 0) > 0 && <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full inline-block flex-shrink-0" style={{backgroundColor:'#34D399'}} />{hour.ml_lfi} LFI (ML)</div>}
+                            {(hour.ml_probe || 0) > 0 && <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full inline-block flex-shrink-0" style={{backgroundColor:'#A78BFA'}} />{hour.ml_probe} Probe (ML)</div>}
+                          </div>
+                        ) : (
+                          <div>{hour.hour} — No attacks</div>
+                        )}
+                      </div>
                       <span className="text-xs text-gray-400 mt-1">{hour.hour}</span>
                     </div>
                   );
@@ -267,8 +339,13 @@ const DashboardPage = () => {
             <div>
               <h2 className="text-base sm:text-lg font-semibold text-gray-900">Total Requests</h2>
               <p className="text-xs sm:text-sm text-gray-500">
-                {requestsData?.totalRequests?.toLocaleString() || '0'} total requests | Last 7 Days: {requestsData?.recentRequests || '0'}
+                {requestsData?.totalRequests?.toLocaleString() || '0'} total | This week: {requestsData?.recentRequests?.toLocaleString() || '0'}
               </p>
+              {requestsData?.breakdown && (
+                <p className="text-xs text-gray-400">
+                  ModSec: {requestsData.breakdown.modsecurity?.toLocaleString()} · ML Blocked: {requestsData.breakdown.mlBlocked?.toLocaleString()} · Benign: {requestsData.breakdown.mlAllowed?.toLocaleString()}
+                </p>
+              )}
             </div>
             <div className="flex items-center gap-2 sm:gap-4 text-xs sm:text-sm">
               <button 
@@ -296,11 +373,6 @@ const DashboardPage = () => {
           
           {/* Chart */}
           <div className="relative" style={{ height: '280px' }}>
-            {refreshing && (
-              <div className="absolute inset-0 bg-white/60 z-10 flex items-center justify-center rounded-lg">
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#FF7A50]"></div>
-              </div>
-            )}
             {requestsData?.chartData && requestsData.chartData.length > 0 && (() => {
               const totalCount = requestsData.chartData.reduce((sum, d) => sum + d.count, 0);
               if (totalCount === 0) {
@@ -315,7 +387,7 @@ const DashboardPage = () => {
                 {/* Y-axis */}
                 <div className="flex flex-col justify-between text-xs text-gray-400 pt-2 pb-8">
                   {(() => {
-                    const maxCount = Math.max(...requestsData.chartData.map(d => d.count), 1);
+                    const maxCount = Math.max(...requestsData.chartData.filter(d => !d.future).map(d => d.count), 1);
                     const yMax = Math.ceil(maxCount / 5) * 5; // Round up to nearest 5
                     return [...Array(6)].map((_, i) => {
                       const value = Math.round((yMax * (5 - i)) / 5);
@@ -338,7 +410,14 @@ const DashboardPage = () => {
                     {/* Bars */}
                     <div className="absolute inset-0 flex items-end justify-around px-2">
                       {requestsData.chartData.map((dayData, index) => {
-                        const maxCount = Math.max(...requestsData.chartData.map(d => d.count), 1);
+                        if (dayData.future) {
+                          return (
+                            <div key={index} className="flex-1 flex justify-center items-end h-full px-1">
+                              <div className="w-full max-w-[50px]" />
+                            </div>
+                          );
+                        }
+                        const maxCount = Math.max(...requestsData.chartData.filter(d => !d.future).map(d => d.count), 1);
                         const yMax = Math.ceil(maxCount / 5) * 5;
                         const heightPercent = (dayData.count / yMax) * 100;
                         
@@ -365,7 +444,7 @@ const DashboardPage = () => {
                   {/* X-axis labels */}
                   <div className="flex justify-around pt-2 pb-2">
                     {requestsData.chartData.map((dayData, index) => (
-                      <div key={index} className="flex-1 text-center text-xs text-gray-400">
+                      <div key={index} className={`flex-1 text-center text-xs ${dayData.future ? 'text-gray-200' : 'text-gray-400'}`}>
                         {dayData.day}
                       </div>
                     ))}
@@ -379,11 +458,6 @@ const DashboardPage = () => {
 
         {/* Total User Card */}
         <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 relative">
-          {refreshing && (
-            <div className="absolute inset-0 bg-white/60 z-10 flex items-center justify-center rounded-xl">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#FF7A50]"></div>
-            </div>
-          )}
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-lg font-semibold text-gray-900">Total User</h2>
             <span className="text-sm text-gray-500">Last 7 Days</span>
@@ -456,11 +530,6 @@ const DashboardPage = () => {
 
       {/* Origins Section */}
       <div className="mb-4 sm:mb-6 relative">
-        {refreshing && (
-          <div className="absolute inset-0 bg-white/60 z-10 flex items-center justify-center rounded-xl">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#FF7A50]"></div>
-          </div>
-        )}
         <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-3 sm:mb-4">Origins</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
           {originsData?.topOrigins?.map((origin, index) => (
@@ -489,13 +558,38 @@ const DashboardPage = () => {
 
       {/* Attack Classification Section */}
       <div className="mb-4 sm:mb-6 relative">
-        {refreshing && (
+        {classificationLoading && (
           <div className="absolute inset-0 bg-white/60 z-10 flex items-center justify-center rounded-xl">
             <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#FF7A50]"></div>
           </div>
         )}
-        <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-3 sm:mb-4">Attack Classification</h2>
-        <p className="text-sm text-gray-500 mb-4">Note: Each request can trigger multiple attack detections. Total attacks may exceed total requests.</p>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3 sm:mb-4 gap-2">
+          <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Attack Classification</h2>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500">Source:</span>
+            {[
+              { key: 'modsecurity', label: 'ModSecurity' },
+              { key: 'ml_blocked', label: 'ML Blocked' },
+            ].map((src) => (
+              <button
+                key={src.key}
+                onClick={() => switchClassificationSource(src.key)}
+                className={`px-3 py-1 text-xs rounded-full transition-colors ${
+                  classificationSource === src.key
+                    ? 'bg-[#FF7A50] text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {src.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <p className="text-sm text-gray-500 mb-4">
+          {classificationSource === 'modsecurity'
+            ? 'Note: Each request can trigger multiple attack detections. Total attacks may exceed total requests.'
+            : 'Showing ML-layer blocked request classifications by predicted attack type.'}
+        </p>
         <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6">
           {classificationsData?.classifications && classificationsData.classifications.length > 0 ? (
             <>

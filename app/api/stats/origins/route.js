@@ -7,24 +7,41 @@ export async function GET() {
     const { role } = await getAuthenticatedUser();
     const client = await clientPromise;
     const db = client.db('waf_db');
-    const collection = db.collection('attacks');
+    const attacksCol = db.collection('attacks');
+    const mlBlockedCol = db.collection('ml_blocked_requests');
+    const mlAllowedCol = db.collection('ml_allowed_requests');
 
-    // Get attacks grouped by client IP to determine origin
-    const ipData = await collection.aggregate([
-      {
-        $group: {
-          _id: '$transaction.client_ip',
-          count: { $sum: 1 },
-          lastSeen: { $max: '$shipped_at' }
-        }
-      },
-      {
-        $sort: { count: -1 }
-      },
-      {
-        $limit: 10
+    // Get IPs grouped across all 3 collections
+    const [attackIPs, mlBlockedIPs, mlAllowedIPs] = await Promise.all([
+      attacksCol.aggregate([
+        { $group: { _id: '$transaction.client_ip', count: { $sum: 1 }, lastSeen: { $max: '$shipped_at' } } },
+      ]).toArray(),
+      mlBlockedCol.aggregate([
+        { $group: { _id: '$source_ip', count: { $sum: 1 }, lastSeen: { $max: '$timestamp' } } },
+      ]).toArray(),
+      mlAllowedCol.aggregate([
+        { $group: { _id: '$source_ip', count: { $sum: 1 }, lastSeen: { $max: '$timestamp' } } },
+      ]).toArray(),
+    ]);
+
+    // Merge all IPs into a single map
+    const ipMap = {};
+    for (const row of [...attackIPs, ...mlBlockedIPs, ...mlAllowedIPs]) {
+      if (!row._id) continue;
+      if (!ipMap[row._id]) {
+        ipMap[row._id] = { count: 0, lastSeen: null };
       }
-    ]).toArray();
+      ipMap[row._id].count += row.count;
+      if (!ipMap[row._id].lastSeen || (row.lastSeen && row.lastSeen > ipMap[row._id].lastSeen)) {
+        ipMap[row._id].lastSeen = row.lastSeen;
+      }
+    }
+
+    // Sort by count descending, take top 10
+    const ipData = Object.entries(ipMap)
+      .map(([ip, data]) => ({ _id: ip, count: data.count, lastSeen: data.lastSeen }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
 
     // Helper function to get country from IP using GeoIP lookup
     async function getCountryFromIP(ip) {
@@ -73,15 +90,17 @@ export async function GET() {
           ? `${geoData.country} (${geoData.ip})` 
           : geoData.country;
 
-        // Calculate real trend: compare last 7 days vs previous 7 days
-        const currentWeekCount = await collection.countDocuments({
-          'transaction.client_ip': item._id,
-          shipped_at: { $gte: sevenDaysAgo }
-        });
-        const previousWeekCount = await collection.countDocuments({
-          'transaction.client_ip': item._id,
-          shipped_at: { $gte: fourteenDaysAgo, $lt: sevenDaysAgo }
-        });
+        // Calculate real trend: compare last 7 days vs previous 7 days across all collections
+        const [curAtk, curMlB, curMlA, prevAtk, prevMlB, prevMlA] = await Promise.all([
+          attacksCol.countDocuments({ 'transaction.client_ip': item._id, shipped_at: { $gte: sevenDaysAgo } }),
+          mlBlockedCol.countDocuments({ source_ip: item._id, timestamp: { $gte: sevenDaysAgo } }),
+          mlAllowedCol.countDocuments({ source_ip: item._id, timestamp: { $gte: sevenDaysAgo } }),
+          attacksCol.countDocuments({ 'transaction.client_ip': item._id, shipped_at: { $gte: fourteenDaysAgo, $lt: sevenDaysAgo } }),
+          mlBlockedCol.countDocuments({ source_ip: item._id, timestamp: { $gte: fourteenDaysAgo, $lt: sevenDaysAgo } }),
+          mlAllowedCol.countDocuments({ source_ip: item._id, timestamp: { $gte: fourteenDaysAgo, $lt: sevenDaysAgo } }),
+        ]);
+        const currentWeekCount = curAtk + curMlB + curMlA;
+        const previousWeekCount = prevAtk + prevMlB + prevMlA;
 
         let trendPercent = 0;
         let trendUp = true;
