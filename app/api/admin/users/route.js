@@ -53,6 +53,19 @@ export async function POST(request) {
 
     const clerk = await clerkClient();
 
+    // Revoke any existing pending invitations for this email so we can re-invite
+    try {
+      const existingInvitations = await clerk.invitations.getInvitationList();
+      const pending = existingInvitations.data.filter(
+        (inv) => inv.emailAddress === email && inv.status === 'pending'
+      );
+      for (const inv of pending) {
+        await clerk.invitations.revokeInvitation(inv.id);
+      }
+    } catch (revokeErr) {
+      console.warn('Could not revoke old invitations:', revokeErr.message);
+    }
+
     const appUrl = (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/+$/, '');
 
     const invitation = await clerk.invitations.createInvitation({
