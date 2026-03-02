@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Sidebar from '@/components/Sidebar';
 import Header from '@/components/Header';
-import DashboardPage from '@/pages/DashboardPage';
+import DashboardPage from '@/components/DashboardPage';
 
 export default function Home() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
