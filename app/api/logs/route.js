@@ -156,9 +156,22 @@ export async function GET(request) {
       ];
     }
 
+    const MODSEC_LIMIT = 2000;
     const allDocs = await collection
       .find(filter)
       .sort({ shipped_at: -1 })
+      .limit(MODSEC_LIMIT)
+      .allowDiskUse(true)
+      .project({
+        'transaction.client_ip': 1,
+        'transaction.request.method': 1,
+        'transaction.request.uri': 1,
+        'transaction.response.http_code': 1,
+        'transaction.messages': 1,
+        'attack_details.anomaly_score': 1,
+        'attack_details.timestamp': 1,
+        'shipped_at': 1,
+      })
       .toArray();
 
     const logs = allDocs.map((doc, index) => {
