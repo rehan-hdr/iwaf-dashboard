@@ -512,7 +512,7 @@ const DashboardPage = () => {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                <span className="text-sm text-gray-600">Normal ({usersData?.normalUsers || 0})</span>
+                <span className="text-sm text-gray-600">Pure Benign ({usersData?.normalUsers || 0})</span>
               </div>
             </div>
             <div className="flex items-center justify-between">
@@ -524,6 +524,12 @@ const DashboardPage = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
               </svg>
             </div>
+            {usersData?.totalMaliciousRequests !== undefined && (
+              <div className="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-400 space-y-1">
+                <div className="flex justify-between"><span>Attack requests:</span><span className="font-medium text-red-500">{(usersData.totalMaliciousRequests || 0).toLocaleString()}</span></div>
+                <div className="flex justify-between"><span>Benign requests:</span><span className="font-medium text-green-500">{(usersData.totalBenignRequests || 0).toLocaleString()}</span></div>
+              </div>
+            )}
           </div>
         </div>
       </div>

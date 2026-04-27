@@ -7,35 +7,48 @@ export async function GET() {
     const { role } = await getAuthenticatedUser();
     const client = await clientPromise;
     const db = client.db('waf_db');
-    const collection = db.collection('attacks');
+    const attacksCol = db.collection('attacks');
+    const mlBlockedCol = db.collection('ml_blocked_requests');
+    const mlAllowedCol = db.collection('ml_allowed_requests');
 
-    // Get unique client IPs (users)
-    const uniqueIPs = await collection.distinct('transaction.client_ip');
-    const totalUsers = uniqueIPs.length;
+    // Distinct IPs per collection
+    const [atkIPs, mlbIPs, mlaIPs] = await Promise.all([
+      attacksCol.distinct('transaction.client_ip'),
+      mlBlockedCol.distinct('source_ip'),
+      mlAllowedCol.distinct('source_ip'),
+    ]);
 
-    // Get users from last 7 days
+    const maliciousSet = new Set([...atkIPs, ...mlbIPs].filter(Boolean));
+    const benignSet = new Set(mlaIPs.filter(Boolean));
+    const allIPs = new Set([...maliciousSet, ...benignSet]);
+
+    const totalUsers = allIPs.size;
+    // Malicious: any IP that has triggered a block
+    const maliciousUsers = maliciousSet.size;
+    // Normal: IPs that have ONLY ever sent benign traffic (never blocked)
+    const normalUsers = [...benignSet].filter(ip => !maliciousSet.has(ip)).length;
+
+    const maliciousPercentage = totalUsers > 0 ? parseFloat(((maliciousUsers / totalUsers) * 100).toFixed(1)) : 0;
+    const normalPercentage = totalUsers > 0 ? parseFloat(((normalUsers / totalUsers) * 100).toFixed(1)) : 0;
+
+    // Recent unique IPs across all collections (last 7 days)
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const [recentAtk, recentMlb, recentMla] = await Promise.all([
+      attacksCol.distinct('transaction.client_ip', { shipped_at: { $gte: sevenDaysAgo } }),
+      mlBlockedCol.distinct('source_ip', { timestamp: { $gte: sevenDaysAgo } }),
+      mlAllowedCol.distinct('source_ip', { timestamp: { $gte: sevenDaysAgo } }),
+    ]);
+    const recentUsers = new Set([...recentAtk, ...recentMlb, ...recentMla].filter(Boolean)).size;
 
-    const recentUsers = await collection.distinct('transaction.client_ip', {
-      'shipped_at': { $gte: sevenDaysAgo }
-    });
-
-    // Classify users as normal or malicious based on attack presence
-    // All IPs in attacks collection are considered malicious
-    const maliciousUsers = totalUsers;
-    const normalUsers = 0; // Since this is attacks collection
-
-    // Calculate percentages
-    const maliciousPercentage = totalUsers > 0 ? ((maliciousUsers / totalUsers) * 100).toFixed(1) : 0;
-    const normalPercentage = totalUsers > 0 ? ((normalUsers / totalUsers) * 100).toFixed(1) : 0;
-
-    console.log('Total Users API:', {
-      totalUsers,
-      maliciousUsers,
-      normalUsers,
-      recentUsers: recentUsers.length
-    });
+    // Request-level breakdown (for context)
+    const [totalAttackReqs, totalMlBlockedReqs, totalMlAllowedReqs] = await Promise.all([
+      attacksCol.countDocuments({ 'transaction.messages': { $exists: true, $not: { $size: 0 } } }),
+      mlBlockedCol.countDocuments(),
+      mlAllowedCol.countDocuments(),
+    ]);
+    const totalMaliciousRequests = totalAttackReqs + totalMlBlockedReqs;
+    const totalBenignRequests = totalMlAllowedReqs;
 
     return NextResponse.json({
       success: true,
@@ -43,12 +56,16 @@ export async function GET() {
         totalUsers,
         maliciousUsers,
         normalUsers,
-        maliciousPercentage: parseFloat(maliciousPercentage),
-        normalPercentage: parseFloat(normalPercentage),
-        recentUsers: recentUsers.length
+        maliciousPercentage,
+        normalPercentage,
+        recentUsers,
+        // Request-level stats (shown as context in widget)
+        totalMaliciousRequests,
+        totalBenignRequests,
       }
     });
   } catch (error) {
     return handleApiError(error);
   }
 }
+
