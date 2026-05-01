@@ -52,17 +52,100 @@ export default function RulesPage() {
   const [error, setError] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
+  const [activeFilter, setActiveFilter] = useState('all');
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analyzeHours, setAnalyzeHours] = useState(24);
+  const [analyzeResult, setAnalyzeResult] = useState(null);
+  const [actionLoading, setActionLoading] = useState({});
+  const [modal, setModal] = useState(null); // { type: 'approve'|'reject', id }
+  const [modalInput, setModalInput] = useState('');
+  const [toast, setToast] = useState(null); // { message, type: 'success'|'error' }
 
-  useEffect(() => {
+  const showToast = (message, type) => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 4000);
+  };
+
+  const fetchSuggestions = (silent = false) => {
+    if (!silent) setLoading(true);
+    if (!silent) setError(null);
     fetch('/api/rules/suggestions')
       .then((res) => res.json())
       .then((data) => {
         if (data.success) setSuggestions(data.data);
-        else setError(data.error || 'Failed to load suggestions');
+        else if (!silent) setError(data.error || 'Failed to load suggestions');
       })
-      .catch(() => setError('Network error — could not reach the server'))
-      .finally(() => setLoading(false));
+      .catch(() => { if (!silent) setError('Network error — could not reach the server'); })
+      .finally(() => { if (!silent) setLoading(false); });
+  };
+
+  useEffect(() => {
+    fetchSuggestions();
   }, []);
+
+  const runAnalysis = async () => {
+    setAnalyzing(true);
+    setAnalyzeResult(null);
+    try {
+      const res = await fetch('/api/rules/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hours: analyzeHours }),
+      });
+      const data = await res.json();
+      setAnalyzeResult(data);
+      if (data.status === 'success' || data.status === 'insufficient_data') {
+        fetchSuggestions(true);
+      }
+    } catch {
+      setAnalyzeResult({ error: 'Could not reach analysis service. Try again in a moment.' });
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const openModal = (type, id) => {
+    setModalInput('');
+    setModal({ type, id });
+  };
+
+  const submitAction = async (type, id, inputValue) => {
+    setModal(null);
+    setModalInput('');
+    setActionLoading((p) => ({ ...p, [id]: type }));
+    try {
+      const res = await fetch(`/api/rules/suggestions/${id}/${type}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(type === 'approve' ? { notes: inputValue } : { reason: inputValue }),
+      });
+      const data = await res.json();
+      const expectedStatus = type === 'approve' ? 'approved' : 'rejected';
+      if (data.status === expectedStatus) {
+        setSuggestions((prev) =>
+          prev.map((s) => s._id === id ? { ...s, status: expectedStatus } : s)
+        );
+        showToast(`Rule ${expectedStatus} successfully.`, 'success');
+        fetchSuggestions(true);
+      } else {
+        showToast(data.error || `Failed to ${type} rule.`, 'error');
+      }
+    } catch {
+      showToast('Could not reach analysis service. Try again in a moment.', 'error');
+    } finally {
+      setActionLoading((p) => { const n = { ...p }; delete n[id]; return n; });
+    }
+  };
+
+  const downloadRule = (s) => {
+    const blob = new Blob([s.rule_text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `iwaf-rule-${s.rule_id}.conf`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const copyToClipboard = (text, key) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -70,6 +153,12 @@ export default function RulesPage() {
       setTimeout(() => setCopiedId(null), 2000);
     });
   };
+
+  const filteredSuggestions = activeFilter === 'all'
+    ? suggestions
+    : suggestions.filter((s) =>
+        s.status === (activeFilter === 'pending' ? 'pending_review' : activeFilter)
+      );
 
   return (
     <div className="p-4 sm:p-6">
@@ -104,6 +193,68 @@ export default function RulesPage() {
       {/* Content */}
       {!loading && !error && (
         <>
+          {/* Run Analysis */}
+          <div className="flex items-center gap-3 mb-4 flex-wrap">
+            <select
+              value={analyzeHours}
+              onChange={(e) => setAnalyzeHours(Number(e.target.value))}
+              disabled={analyzing}
+              className="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#FF7A50]"
+            >
+              <option value={1}>Last 1 hour</option>
+              <option value={24}>Last 24 hours</option>
+              <option value={168}>Last 7 days</option>
+              <option value={720}>Last 30 days</option>
+            </select>
+            <button
+              onClick={runAnalysis}
+              disabled={analyzing}
+              className="inline-flex items-center gap-2 px-4 py-1.5 text-sm font-medium rounded-lg bg-[#FF7A50] text-white hover:bg-[#e06840] disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+            >
+              {analyzing ? (
+                <>
+                  <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Analyzing…
+                </>
+              ) : (
+                <>
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Run Analysis
+                </>
+              )}
+            </button>
+          </div>
+
+          {analyzing && (
+            <div className="mb-4 px-4 py-3 rounded-lg text-sm border bg-blue-50 border-blue-200 text-blue-700">
+              Analyzing recent attacks… this may take 10–15 seconds.
+            </div>
+          )}
+
+          {analyzeResult && !analyzing && (
+            <div className={`mb-4 px-4 py-3 rounded-lg text-sm border ${
+              analyzeResult.error
+                ? 'bg-red-50 border-red-200 text-red-700'
+                : analyzeResult.status === 'insufficient_data'
+                ? 'bg-amber-50 border-amber-200 text-amber-700'
+                : 'bg-green-50 border-green-200 text-green-700'
+            }`}>
+              {analyzeResult.error && analyzeResult.error}
+              {analyzeResult.status === 'insufficient_data' && analyzeResult.message}
+              {analyzeResult.status === 'success' && (
+                <>
+                  <span className="font-semibold">Analysis complete.</span>{' '}
+                  Analyzed {analyzeResult.analyzed_requests} requests in the last {analyzeResult.time_window_hours}h →{' '}
+                  {analyzeResult.dedup_summary?.new ?? 0} new,{' '}
+                  {analyzeResult.dedup_summary?.merged ?? 0} merged,{' '}
+                  {analyzeResult.dedup_summary?.re_suggested ?? 0} re-suggested.
+                </>
+              )}
+            </div>
+          )}
+
           {/* Summary stat cards */}
           {suggestions.length > 0 && (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-6">
@@ -133,9 +284,38 @@ export default function RulesPage() {
             </div>
           )}
 
+          {/* Status filter tabs */}
+          {suggestions.length > 0 && (
+            <div className="flex items-center gap-1 mb-4 flex-wrap">
+              {[
+                { key: 'all', label: 'All', count: suggestions.length },
+                { key: 'pending', label: 'Pending Review', count: suggestions.filter((s) => s.status === 'pending_review').length },
+                { key: 'approved', label: 'Approved', count: suggestions.filter((s) => s.status === 'approved').length },
+                { key: 'rejected', label: 'Rejected', count: suggestions.filter((s) => s.status === 'rejected').length },
+              ].map(({ key, label, count }) => (
+                <button
+                  key={key}
+                  onClick={() => setActiveFilter(key)}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                    activeFilter === key
+                      ? 'bg-gray-800 text-white'
+                      : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  {label}
+                  <span className={`px-1.5 py-0.5 rounded-full text-xs ${
+                    activeFilter === key ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-500'
+                  }`}>
+                    {count}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* Suggestion cards */}
           <div className="space-y-3">
-            {suggestions.map((s) => {
+            {filteredSuggestions.map((s) => {
               const isExpanded = expandedId === s._id;
               const cs = s.cluster_summary;
               const fp = s.fp_evaluation;
@@ -187,6 +367,11 @@ export default function RulesPage() {
                           <span className={`text-xs font-medium px-2 py-0.5 rounded ${STATUS_COLORS[s.status] || 'bg-gray-100 text-gray-600'}`}>
                             {formatStatus(s.status)}
                           </span>
+                          {s.seen_count > 1 && (
+                            <span className="text-xs font-medium px-2 py-0.5 rounded bg-purple-100 text-purple-700">
+                              🔁 Seen {s.seen_count}×
+                            </span>
+                          )}
                         </div>
                         <p className="text-sm font-semibold text-gray-800 leading-snug">{s.technique_name}</p>
                         <p className="text-xs text-gray-500 mt-1 line-clamp-1">{s.description}</p>
@@ -211,6 +396,20 @@ export default function RulesPage() {
                   {/* ── Expanded panel ── */}
                   {isExpanded && (
                     <div className="border-t border-gray-100">
+
+                      {/* Previously rejected warning */}
+                      {s.previously_rejected && s.previous_rejection && (
+                        <div className="mx-5 mt-4 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+                          <span className="font-semibold">⚠️ Previously rejected</span>
+                          {s.previous_rejection.rejected_at && (
+                            <> on {new Date(s.previous_rejection.rejected_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</>
+                          )}
+                          {s.previous_rejection.reason && (
+                            <> with reason: &ldquo;{s.previous_rejection.reason}&rdquo;</>
+                          )}
+                          . This pattern has reappeared in attacks. Reconsider before rejecting again.
+                        </div>
+                      )}
 
                       {/* Description */}
                       <div className="px-5 py-4">
@@ -407,6 +606,66 @@ export default function RulesPage() {
                         </pre>
                       </div>
 
+                      {/* Action bar */}
+                      {s.status === 'pending_review' ? (
+                        <div className="px-5 py-4 border-t border-gray-100 flex items-center gap-3 flex-wrap">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); openModal('approve', s._id); }}
+                            disabled={!!actionLoading[s._id]}
+                            className="inline-flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-60 transition-colors"
+                          >
+                            {actionLoading[s._id] === 'approve' ? (
+                              <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            ) : '✓'} Approve
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); openModal('reject', s._id); }}
+                            disabled={!!actionLoading[s._id]}
+                            className="inline-flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-60 transition-colors"
+                          >
+                            {actionLoading[s._id] === 'reject' ? (
+                              <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            ) : '✗'} Reject
+                          </button>
+                          {s.rule_text && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); downloadRule(s); }}
+                              className="inline-flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+                            >
+                              ⬇ Download .conf
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="px-5 py-4 border-t border-gray-100 flex items-center justify-between flex-wrap gap-3">
+                          <div className="text-sm">
+                            <span className={`font-medium ${s.status === 'approved' ? 'text-green-700' : 'text-red-700'}`}>
+                              Status: {formatStatus(s.status)}
+                            </span>
+                            {s.status === 'approved' && s.approved_at && (
+                              <span className="text-gray-500 ml-1">on {new Date(s.approved_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                            )}
+                            {s.status === 'rejected' && s.rejected_at && (
+                              <span className="text-gray-500 ml-1">on {new Date(s.rejected_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                            )}
+                            {s.status === 'approved' && s.admin_notes && (
+                              <span className="text-gray-500 ml-2 italic">&ldquo;{s.admin_notes}&rdquo;</span>
+                            )}
+                            {s.status === 'rejected' && s.rejection_reason && (
+                              <span className="text-gray-500 ml-2 italic">&ldquo;{s.rejection_reason}&rdquo;</span>
+                            )}
+                          </div>
+                          {s.rule_text && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); downloadRule(s); }}
+                              className="inline-flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+                            >
+                              ⬇ Download .conf
+                            </button>
+                          )}
+                        </div>
+                      )}
+
                     </div>
                   )}
                 </div>
@@ -427,6 +686,62 @@ export default function RulesPage() {
             </div>
           )}
         </>
+      )}
+
+      {/* Action modal */}
+      {modal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          onClick={() => setModal(null)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-base font-semibold text-gray-900 mb-1">
+              {modal.type === 'approve' ? 'Approve Rule' : 'Reject Rule'}
+            </h3>
+            <p className="text-sm text-gray-500 mb-4">
+              {modal.type === 'approve'
+                ? 'Add optional notes for this approval.'
+                : 'Provide a reason for rejection.'}
+            </p>
+            <textarea
+              autoFocus
+              value={modalInput}
+              onChange={(e) => setModalInput(e.target.value)}
+              placeholder={modal.type === 'approve' ? 'Admin notes (optional)…' : 'Reason for rejection…'}
+              rows={3}
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-[#FF7A50] mb-4"
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setModal(null)}
+                className="px-4 py-2 text-sm font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => submitAction(modal.type, modal.id, modalInput)}
+                disabled={modal.type === 'reject' && !modalInput.trim()}
+                className={`px-4 py-2 text-sm font-medium rounded-lg text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                  modal.type === 'approve' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'
+                }`}
+              >
+                {modal.type === 'approve' ? '✓ Approve' : '✗ Reject'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast notification */}
+      {toast && (
+        <div className={`fixed bottom-5 right-5 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-medium pointer-events-none ${
+          toast.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
+        }`}>
+          {toast.type === 'success' ? '✓' : '✗'} {toast.message}
+        </div>
       )}
     </div>
   );
