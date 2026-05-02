@@ -1,190 +1,178 @@
 'use client';
 
-import { useState } from 'react';
-import { BLOCKLIST, WHITELIST } from '@/lib/mockData';
+import { useState, useEffect, useCallback } from 'react';
 
 export default function IpManagementPage() {
-  const [activeTab, setActiveTab] = useState('blocklist');
-  const [blocklist, setBlocklist] = useState(BLOCKLIST);
-  const [whitelist, setWhitelist] = useState(WHITELIST);
-  const [newIp, setNewIp] = useState('');
-  const [newReason, setNewReason] = useState('');
+  const [activeIps, setActiveIps] = useState([]);
+  const [ipsLoading, setIpsLoading] = useState(false);
+  const [ipsError, setIpsError] = useState(null);
+  const [togglingIp, setTogglingIp] = useState(null);
 
-  const handleAdd = (e) => {
-    e.preventDefault();
-    if (!newIp) return;
-
-    const entry = {
-      ip: newIp,
-      reason: newReason || 'Manually added',
-      addedAt: new Date().toISOString(),
-      ...(activeTab === 'blocklist' ? { hits: 0 } : {}),
-    };
-
-    if (activeTab === 'blocklist') {
-      setBlocklist([entry, ...blocklist]);
-    } else {
-      setWhitelist([entry, ...whitelist]);
+  const fetchActiveIps = useCallback(async () => {
+    setIpsLoading(true);
+    setIpsError(null);
+    try {
+      const res = await fetch('/api/ips');
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Failed to load IPs');
+      setActiveIps(data.ips);
+    } catch (err) {
+      setIpsError(err.message);
+    } finally {
+      setIpsLoading(false);
     }
-    setNewIp('');
-    setNewReason('');
-  };
+  }, []);
 
-  const handleRemove = (ip) => {
-    if (activeTab === 'blocklist') {
-      setBlocklist(blocklist.filter((item) => item.ip !== ip));
-    } else {
-      setWhitelist(whitelist.filter((item) => item.ip !== ip));
+  useEffect(() => {
+    fetchActiveIps();
+  }, [fetchActiveIps]);
+
+  const handleToggleBlock = async (ip, currentBlocked) => {
+    setTogglingIp(ip);
+    const newBlocked = !currentBlocked;
+    try {
+      const res = await fetch('/api/ips', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ip, blocked: newBlocked }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Update failed');
+      setActiveIps((prev) =>
+        prev.map((entry) =>
+          entry.ip === ip ? { ...entry, blocked: newBlocked } : entry
+        )
+      );
+    } catch (err) {
+      setIpsError(err.message);
+    } finally {
+      setTogglingIp(null);
     }
   };
-
-  const currentList = activeTab === 'blocklist' ? blocklist : whitelist;
 
   return (
     <div className="p-4 sm:p-6">
       <div className="flex items-center gap-3 mb-2 flex-wrap">
         <h1 className="text-xl sm:text-2xl font-bold text-gray-800">IP Management</h1>
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
-          Hardcoded Data
-        </span>
       </div>
-      <p className="text-gray-500 text-sm mb-1">Manage blocked and whitelisted IP addresses</p>
-      <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs px-3 py-2 rounded-lg mb-4 sm:mb-6">
-        <strong>Note:</strong> Blocklist and Whitelist tables use static sample data. Changes are not persisted.
-      </div>
+      <p className="text-gray-500 text-sm mb-6">Live view of all IPs making requests. Toggle to block or allow each IP.</p>
 
-      {/* Tabs */}
-      <div className="flex gap-1 mb-4 sm:mb-6 bg-gray-100 p-1 rounded-lg w-full sm:w-fit">
-        <button
-          onClick={() => setActiveTab('blocklist')}
-          className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 rounded-md text-sm font-medium transition-colors ${
-            activeTab === 'blocklist'
-              ? 'bg-white text-red-600 shadow-sm'
-              : 'text-gray-600 hover:text-gray-800'
-          }`}
-        >
-          Blocklist ({blocklist.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('whitelist')}
-          className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 rounded-md text-sm font-medium transition-colors ${
-            activeTab === 'whitelist'
-              ? 'bg-white text-green-600 shadow-sm'
-              : 'text-gray-600 hover:text-gray-800'
-          }`}
-        >
-          Whitelist ({whitelist.length})
-        </button>
-      </div>
-
-      {/* Add IP Form */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6 mb-4 sm:mb-6">
-        <h2 className="text-base sm:text-lg font-semibold text-gray-800 mb-4">
-          Add to {activeTab === 'blocklist' ? 'Blocklist' : 'Whitelist'}
-        </h2>
-        <form onSubmit={handleAdd} className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4 items-stretch sm:items-end">
-          <div className="flex-1 min-w-0 sm:min-w-[200px]">
-            <label className="block text-sm font-medium text-gray-700 mb-1">IP Address</label>
-            <input
-              type="text"
-              value={newIp}
-              onChange={(e) => setNewIp(e.target.value)}
-              placeholder="e.g. 192.168.1.100"
-              required
-              pattern="^(\d{1,3}\.){3}\d{1,3}$"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#FF7A50] focus:border-transparent outline-none text-sm"
-            />
+      {
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="px-4 sm:px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+            <h2 className="text-base sm:text-lg font-semibold text-gray-800">
+              IPs Making Requests
+            </h2>
+            <button
+              onClick={fetchActiveIps}
+              disabled={ipsLoading}
+              className="text-xs text-[#FF7A50] hover:text-orange-600 font-medium disabled:opacity-50"
+            >
+              {ipsLoading ? 'Refreshing…' : 'Refresh'}
+            </button>
           </div>
-          <div className="flex-1 min-w-0 sm:min-w-[200px]">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Reason</label>
-            <input
-              type="text"
-              value={newReason}
-              onChange={(e) => setNewReason(e.target.value)}
-              placeholder="Reason for adding"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#FF7A50] focus:border-transparent outline-none text-sm"
-            />
-          </div>
-          <button
-            type="submit"
-            className={`w-full sm:w-auto px-6 py-2 text-white rounded-lg transition-colors text-sm ${
-              activeTab === 'blocklist'
-                ? 'bg-red-500 hover:bg-red-600'
-                : 'bg-green-500 hover:bg-green-600'
-            }`}
-          >
-            Add IP
-          </button>
-        </form>
-      </div>
 
-      {/* IP Table — Mobile card view + Desktop table */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        {/* Mobile card view */}
-        <div className="block sm:hidden divide-y divide-gray-100">
-          {currentList.map((item) => (
-            <div key={item.ip} className="p-4">
-              <div className="flex items-center justify-between mb-1">
-                <span className="font-mono text-sm text-gray-800">{item.ip}</span>
-                <button
-                  onClick={() => handleRemove(item.ip)}
-                  className="text-xs text-red-600 hover:text-red-800"
-                >
-                  Remove
-                </button>
-              </div>
-              <div className="text-xs text-gray-600 mb-1">{item.reason}</div>
-              <div className="flex items-center justify-between text-xs text-gray-400">
-                <span>{new Date(item.addedAt).toLocaleDateString()}</span>
-                {activeTab === 'blocklist' && (
-                  <span className="text-red-600 font-medium">{item.hits} hits</span>
-                )}
-              </div>
+          {ipsError && (
+            <div className="m-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+              {ipsError}
             </div>
-          ))}
-        </div>
+          )}
 
-        {/* Desktop table view */}
-        <div className="hidden sm:block overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-gray-50 text-left">
-                <th className="px-4 lg:px-6 py-3 text-xs font-medium text-gray-500 uppercase">IP Address</th>
-                <th className="px-4 lg:px-6 py-3 text-xs font-medium text-gray-500 uppercase">Reason</th>
-                <th className="px-4 lg:px-6 py-3 text-xs font-medium text-gray-500 uppercase">Added</th>
-                {activeTab === 'blocklist' && (
-                  <th className="px-4 lg:px-6 py-3 text-xs font-medium text-gray-500 uppercase">Hits</th>
-                )}
-                <th className="px-4 lg:px-6 py-3 text-xs font-medium text-gray-500 uppercase">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {currentList.map((item) => (
-                <tr key={item.ip} className="hover:bg-gray-50">
-                  <td className="px-4 lg:px-6 py-4 font-mono text-sm text-gray-800">{item.ip}</td>
-                  <td className="px-4 lg:px-6 py-4 text-sm text-gray-600">{item.reason}</td>
-                  <td className="px-4 lg:px-6 py-4 text-sm text-gray-500">
-                    {new Date(item.addedAt).toLocaleDateString()}
-                  </td>
-                  {activeTab === 'blocklist' && (
-                    <td className="px-4 lg:px-6 py-4">
-                      <span className="text-sm font-medium text-red-600">{item.hits}</span>
-                    </td>
-                  )}
-                  <td className="px-4 lg:px-6 py-4">
-                    <button
-                      onClick={() => handleRemove(item.ip)}
-                      className="text-sm text-red-600 hover:text-red-800"
-                    >
-                      Remove
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {ipsLoading && !activeIps.length ? (
+            <div className="p-8 text-center text-gray-400 text-sm">Loading IPs…</div>
+          ) : activeIps.length === 0 ? (
+            <div className="p-8 text-center text-gray-400 text-sm">No IPs found in request logs.</div>
+          ) : (
+            <>
+              {/* Mobile card view */}
+              <div className="block sm:hidden divide-y divide-gray-100">
+                {activeIps.map((entry) => (
+                  <div key={entry.ip} className="p-4 flex items-center justify-between gap-3">
+                    <div>
+                      <div className="font-mono text-sm text-gray-800">{entry.ip}</div>
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        {entry.requestCount.toLocaleString()} request{entry.requestCount !== 1 ? 's' : ''}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {entry.blocked && (
+                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
+                          Blocked
+                        </span>
+                      )}
+                      <button
+                        onClick={() => handleToggleBlock(entry.ip, entry.blocked)}
+                        disabled={togglingIp === entry.ip}
+                        aria-label={entry.blocked ? 'Unblock IP' : 'Block IP'}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-[#FF7A50] disabled:opacity-50 ${
+                          entry.blocked ? 'bg-red-500' : 'bg-gray-300'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                            entry.blocked ? 'translate-x-6' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop table view */}
+              <div className="hidden sm:block overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-50 text-left">
+                      <th className="px-6 py-3 text-xs font-medium text-gray-500 uppercase">IP Address</th>
+                      <th className="px-6 py-3 text-xs font-medium text-gray-500 uppercase">Requests</th>
+                      <th className="px-6 py-3 text-xs font-medium text-gray-500 uppercase">Status</th>
+                      <th className="px-6 py-3 text-xs font-medium text-gray-500 uppercase">Block</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {activeIps.map((entry) => (
+                      <tr key={entry.ip} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 font-mono text-sm text-gray-800">{entry.ip}</td>
+                        <td className="px-6 py-4 text-sm text-gray-600">
+                          {entry.requestCount.toLocaleString()}
+                        </td>
+                        <td className="px-6 py-4">
+                          {entry.blocked ? (
+                            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
+                              Blocked
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                              Allowed
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4">
+                          <button
+                            onClick={() => handleToggleBlock(entry.ip, entry.blocked)}
+                            disabled={togglingIp === entry.ip}
+                            aria-label={entry.blocked ? 'Unblock IP' : 'Block IP'}
+                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-[#FF7A50] disabled:opacity-50 ${
+                              entry.blocked ? 'bg-red-500' : 'bg-gray-300'
+                            }`}
+                          >
+                            <span
+                              className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                                entry.blocked ? 'translate-x-6' : 'translate-x-1'
+                              }`}
+                            />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
         </div>
-      </div>
+      }
     </div>
   );
 }
