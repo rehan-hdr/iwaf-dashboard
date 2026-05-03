@@ -13,18 +13,18 @@ export async function GET() {
     const mlAllowedCol = db.collection('ml_allowed_requests');
     const blockedIpsCol = db.collection('blocked_ips');
 
-    // Aggregate unique IPs and request counts from all three collections
+    // Aggregate unique IPs, request counts, and latest timestamp from all three collections
     const [atkAgg, mlbAgg, mlaAgg, blockedDocs] = await Promise.all([
       attacksCol
         .aggregate([
-          { $group: { _id: '$transaction.client_ip', count: { $sum: 1 } } },
+          { $group: { _id: '$transaction.client_ip', count: { $sum: 1 }, lastSeen: { $max: '$shipped_at' } } },
         ])
         .toArray(),
       mlBlockedCol
-        .aggregate([{ $group: { _id: '$source_ip', count: { $sum: 1 } } }])
+        .aggregate([{ $group: { _id: '$source_ip', count: { $sum: 1 }, lastSeen: { $max: '$timestamp' } } }])
         .toArray(),
       mlAllowedCol
-        .aggregate([{ $group: { _id: '$source_ip', count: { $sum: 1 } } }])
+        .aggregate([{ $group: { _id: '$source_ip', count: { $sum: 1 }, lastSeen: { $max: '$timestamp' } } }])
         .toArray(),
       blockedIpsCol.find({}).toArray(),
     ]);
@@ -35,21 +35,29 @@ export async function GET() {
       if (doc.ip) blockedMap[doc.ip] = doc.blocked === true;
     }
 
-    // Merge counts into a unified IP map
+    // Merge counts and lastSeen timestamps into a unified IP map
     const ipMap = {};
-    const add = (ip, count) => {
+    const add = (ip, count, lastSeen) => {
       if (!ip) return;
-      ipMap[ip] = (ipMap[ip] || 0) + count;
+      if (!ipMap[ip]) ipMap[ip] = { count: 0, lastSeen: null };
+      ipMap[ip].count += count;
+      if (lastSeen) {
+        const ts = typeof lastSeen === 'string' ? lastSeen : lastSeen instanceof Date ? lastSeen.toISOString() : null;
+        if (ts && (!ipMap[ip].lastSeen || ts > ipMap[ip].lastSeen)) {
+          ipMap[ip].lastSeen = ts;
+        }
+      }
     };
 
-    for (const r of atkAgg) add(r._id, r.count);
-    for (const r of mlbAgg) add(r._id, r.count);
-    for (const r of mlaAgg) add(r._id, r.count);
+    for (const r of atkAgg) add(r._id, r.count, r.lastSeen);
+    for (const r of mlbAgg) add(r._id, r.count, r.lastSeen);
+    for (const r of mlaAgg) add(r._id, r.count, r.lastSeen);
 
     const ips = Object.entries(ipMap)
-      .map(([ip, requestCount]) => ({
+      .map(([ip, { count, lastSeen }]) => ({
         ip,
-        requestCount,
+        requestCount: count,
+        lastSeen: lastSeen || null,
         blocked: blockedMap[ip] ?? false,
       }))
       .sort((a, b) => b.requestCount - a.requestCount);

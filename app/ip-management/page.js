@@ -2,11 +2,24 @@
 
 import { useState, useEffect, useCallback } from 'react';
 
+function formatRelativeTime(ts) {
+  if (!ts) return '—';
+  const diff = Date.now() - new Date(ts).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
+
 export default function IpManagementPage() {
   const [activeIps, setActiveIps] = useState([]);
   const [ipsLoading, setIpsLoading] = useState(false);
   const [ipsError, setIpsError] = useState(null);
   const [togglingIp, setTogglingIp] = useState(null);
+  const [sortBy, setSortBy] = useState('requests'); // 'requests' | 'recent'
 
   const fetchActiveIps = useCallback(async () => {
     setIpsLoading(true);
@@ -26,6 +39,16 @@ export default function IpManagementPage() {
   useEffect(() => {
     fetchActiveIps();
   }, [fetchActiveIps]);
+
+  const sortedIps = [...activeIps].sort((a, b) => {
+    if (sortBy === 'recent') {
+      if (!a.lastSeen && !b.lastSeen) return 0;
+      if (!a.lastSeen) return 1;
+      if (!b.lastSeen) return -1;
+      return new Date(b.lastSeen) - new Date(a.lastSeen);
+    }
+    return b.requestCount - a.requestCount;
+  });
 
   const handleToggleBlock = async (ip, currentBlocked) => {
     setTogglingIp(ip);
@@ -59,17 +82,27 @@ export default function IpManagementPage() {
 
       {
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="px-4 sm:px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div className="px-4 sm:px-6 py-4 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap">
             <h2 className="text-base sm:text-lg font-semibold text-gray-800">
               IPs Making Requests
             </h2>
-            <button
-              onClick={fetchActiveIps}
-              disabled={ipsLoading}
-              className="text-xs text-[#FF7A50] hover:text-orange-600 font-medium disabled:opacity-50"
-            >
-              {ipsLoading ? 'Refreshing…' : 'Refresh'}
-            </button>
+            <div className="flex items-center gap-2">
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#FF7A50]"
+              >
+                <option value="requests">Sort: Most Requests</option>
+                <option value="recent">Sort: Most Recent</option>
+              </select>
+              <button
+                onClick={fetchActiveIps}
+                disabled={ipsLoading}
+                className="text-xs text-[#FF7A50] hover:text-orange-600 font-medium disabled:opacity-50"
+              >
+                {ipsLoading ? 'Refreshing…' : 'Refresh'}
+              </button>
+            </div>
           </div>
 
           {ipsError && (
@@ -86,12 +119,13 @@ export default function IpManagementPage() {
             <>
               {/* Mobile card view */}
               <div className="block sm:hidden divide-y divide-gray-100">
-                {activeIps.map((entry) => (
+                {sortedIps.map((entry) => (
                   <div key={entry.ip} className="p-4 flex items-center justify-between gap-3">
                     <div>
                       <div className="font-mono text-sm text-gray-800">{entry.ip}</div>
                       <div className="text-xs text-gray-500 mt-0.5">
                         {entry.requestCount.toLocaleString()} request{entry.requestCount !== 1 ? 's' : ''}
+                        {entry.lastSeen && <> · {formatRelativeTime(entry.lastSeen)}</>}
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
@@ -126,17 +160,19 @@ export default function IpManagementPage() {
                     <tr className="bg-gray-50 text-left">
                       <th className="px-6 py-3 text-xs font-medium text-gray-500 uppercase">IP Address</th>
                       <th className="px-6 py-3 text-xs font-medium text-gray-500 uppercase">Requests</th>
+                      <th className="px-6 py-3 text-xs font-medium text-gray-500 uppercase">Last Seen</th>
                       <th className="px-6 py-3 text-xs font-medium text-gray-500 uppercase">Status</th>
                       <th className="px-6 py-3 text-xs font-medium text-gray-500 uppercase">Block</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {activeIps.map((entry) => (
+                    {sortedIps.map((entry) => (
                       <tr key={entry.ip} className="hover:bg-gray-50">
                         <td className="px-6 py-4 font-mono text-sm text-gray-800">{entry.ip}</td>
                         <td className="px-6 py-4 text-sm text-gray-600">
                           {entry.requestCount.toLocaleString()}
                         </td>
+                        <td className="px-6 py-4 text-sm text-gray-500">{formatRelativeTime(entry.lastSeen)}</td>
                         <td className="px-6 py-4">
                           {entry.blocked ? (
                             <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">

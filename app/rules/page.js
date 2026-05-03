@@ -242,7 +242,16 @@ export default function RulesPage() {
                 : 'bg-green-50 border-green-200 text-green-700'
             }`}>
               {analyzeResult.error && analyzeResult.error}
-              {analyzeResult.status === 'insufficient_data' && analyzeResult.message}
+              {analyzeResult.status === 'insufficient_data' && (
+                <>
+                  {analyzeResult.message}
+                  {typeof analyzeResult.analyzed_requests === 'number' && analyzeResult.analyzed_requests === 0 && (
+                    <span className="block mt-1 text-xs opacity-80">
+                      Flask found 0 blocked requests in its database. If the dashboard shows blocked requests, Flask may be querying a different MongoDB collection or database. Try a longer time window, or ask your teammate to verify Flask&apos;s MongoDB connection.
+                    </span>
+                  )}
+                </>
+              )}
               {analyzeResult.status === 'success' && (
                 <>
                   <span className="font-semibold">Analysis complete.</span>{' '}
